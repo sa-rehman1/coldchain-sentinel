@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "00000000-0000-4000-8000-000000000501",
+  "correlationId": "00000000-0000-4000-8000-000000000502",
+  "occurredAt": "2026-09-19T15:00:00Z",
+  "producer": "coldchain-telemetry-worker",
+  "failedTopic": "coldchain.telemetry.v1",
+  "failedPartition": 0,
+  "failedOffset": 42,
+  "failureType": "INVALID_MESSAGE",
+  "reasonCode": "CONTRACT_VALIDATION_FAILED",
+  "payloadHash": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+  "encodedPayloadBase64": "e30="
+}

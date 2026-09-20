@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "00000000-0000-4000-8000-000000000006",
+  "correlationId": "00000000-0000-4000-8000-000000000100",
+  "occurredAt": "2026-09-19T15:05:01Z",
+  "producer": "control-plane",
+  "commandId": "00000000-0000-4000-8000-000000000700",
+  "incidentId": "00000000-0000-4000-8000-000000000300",
+  "approvalId": "00000000-0000-4000-8000-000000000600",
+  "recommendationId": "00000000-0000-4000-8000-000000000500",
+  "actionType": "CONTACT_DRIVER",
+  "parameters": {"channel": "SIMULATED"},
+  "idempotencyKey": "incident-300-contact-driver-v1",
+  "policyVersion": "governance-1.0"
+}

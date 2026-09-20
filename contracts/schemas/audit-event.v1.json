@@ -1,0 +1,110 @@
+{
+  "$id": "https://coldchain-sentinel.local/contracts/audit-event.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "actorId": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Actorid",
+      "type": "string"
+    },
+    "actorType": {
+      "enum": [
+        "USER",
+        "SERVICE",
+        "SYSTEM"
+      ],
+      "title": "Actortype",
+      "type": "string"
+    },
+    "auditEventId": {
+      "format": "uuid",
+      "title": "Auditeventid",
+      "type": "string"
+    },
+    "correlationId": {
+      "format": "uuid",
+      "title": "Correlationid",
+      "type": "string"
+    },
+    "entityId": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Entityid",
+      "type": "string"
+    },
+    "entityType": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Entitytype",
+      "type": "string"
+    },
+    "eventHash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Eventhash",
+      "type": "string"
+    },
+    "eventId": {
+      "format": "uuid",
+      "title": "Eventid",
+      "type": "string"
+    },
+    "eventType": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Eventtype",
+      "type": "string"
+    },
+    "occurredAt": {
+      "format": "date-time",
+      "title": "Occurredat",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "previousEventHash": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previouseventhash"
+    },
+    "producer": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Producer",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventId",
+    "correlationId",
+    "occurredAt",
+    "producer",
+    "auditEventId",
+    "actorType",
+    "actorId",
+    "eventType",
+    "entityType",
+    "entityId",
+    "payload",
+    "eventHash"
+  ],
+  "title": "audit-event.v1",
+  "type": "object"
+}

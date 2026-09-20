@@ -1,0 +1,149 @@
+name: coldchain-sentinel
+
+services:
+  postgres:
+    image: postgres:16.4-alpine
+    environment:
+      POSTGRES_USER: ${COLDCHAIN_POSTGRES_USER:?set COLDCHAIN_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${COLDCHAIN_POSTGRES_PASSWORD:?set COLDCHAIN_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${COLDCHAIN_POSTGRES_DB:?set COLDCHAIN_POSTGRES_DB}
+    ports:
+      - "${COLDCHAIN_POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [coldchain-internal]
+
+  kafka:
+    image: apache/kafka:3.9.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:29092,CONTROLLER://:29093,EXTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    ports:
+      - "${COLDCHAIN_KAFKA_HOST_PORT:-9092}:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+    networks: [coldchain-internal]
+
+  kafka-init:
+    image: apache/kafka:3.9.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic coldchain.telemetry.v1 --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:29092 --create --if-not-exists --topic coldchain.telemetry.dlq.v1 --partitions 1 --replication-factor 1
+    networks: [coldchain-internal]
+
+  migrate:
+    image: coldchain-sentinel:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      COLDCHAIN_ENVIRONMENT: local
+      COLDCHAIN_DATABASE_URL: postgresql+asyncpg://${COLDCHAIN_POSTGRES_USER}:${COLDCHAIN_POSTGRES_PASSWORD}@postgres:5432/${COLDCHAIN_POSTGRES_DB}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [coldchain-internal]
+
+  api:
+    image: coldchain-sentinel:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      COLDCHAIN_ENVIRONMENT: local
+      COLDCHAIN_DATABASE_URL: postgresql+asyncpg://${COLDCHAIN_POSTGRES_USER}:${COLDCHAIN_POSTGRES_PASSWORD}@postgres:5432/${COLDCHAIN_POSTGRES_DB}
+      COLDCHAIN_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      COLDCHAIN_KAFKA_TELEMETRY_TOPIC: coldchain.telemetry.v1
+      COLDCHAIN_KAFKA_DEAD_LETTER_TOPIC: coldchain.telemetry.dlq.v1
+    ports:
+      - "${COLDCHAIN_API_HOST_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health/live', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    networks: [coldchain-internal]
+
+  worker:
+    image: coldchain-sentinel:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["python", "-m", "coldchain.workers.telemetry"]
+    environment:
+      COLDCHAIN_ENVIRONMENT: local
+      COLDCHAIN_DATABASE_URL: postgresql+asyncpg://${COLDCHAIN_POSTGRES_USER}:${COLDCHAIN_POSTGRES_PASSWORD}@postgres:5432/${COLDCHAIN_POSTGRES_DB}
+      COLDCHAIN_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      COLDCHAIN_KAFKA_TELEMETRY_TOPIC: coldchain.telemetry.v1
+      COLDCHAIN_KAFKA_DEAD_LETTER_TOPIC: coldchain.telemetry.dlq.v1
+      COLDCHAIN_KAFKA_CONSUMER_GROUP: coldchain-telemetry-worker-v1
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    networks: [coldchain-internal]
+
+  test:
+    profiles: ["test"]
+    image: coldchain-sentinel-test:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    environment:
+      COLDCHAIN_ENVIRONMENT: test
+      COLDCHAIN_TEST_DATABASE_URL: postgresql+asyncpg://${COLDCHAIN_POSTGRES_USER}:${COLDCHAIN_POSTGRES_PASSWORD}@postgres:5432/${COLDCHAIN_POSTGRES_DB}
+      COLDCHAIN_DATABASE_URL: postgresql+asyncpg://${COLDCHAIN_POSTGRES_USER}:${COLDCHAIN_POSTGRES_PASSWORD}@postgres:5432/${COLDCHAIN_POSTGRES_DB}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [coldchain-internal]
+
+volumes:
+  postgres-data:
+  kafka-data:
+
+networks:
+  coldchain-internal:
+    driver: bridge

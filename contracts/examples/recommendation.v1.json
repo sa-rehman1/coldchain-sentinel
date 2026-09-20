@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "00000000-0000-4000-8000-000000000004",
+  "correlationId": "00000000-0000-4000-8000-000000000100",
+  "occurredAt": "2026-09-19T15:00:03Z",
+  "producer": "ai-investigation-worker",
+  "recommendationId": "00000000-0000-4000-8000-000000000500",
+  "incidentId": "00000000-0000-4000-8000-000000000300",
+  "evidenceReferences": ["00000000-0000-4000-8000-000000000400"],
+  "confidence": 0.9,
+  "uncertainty": "Cooling-unit state has not yet been confirmed.",
+  "policyVersion": "cold-chain-sop-2.4",
+  "promptVersion": "incident-investigation-1.0",
+  "model": "example-model",
+  "provider": "example-provider",
+  "recommendationHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "expiresAt": "2026-09-19T15:15:03Z",
+  "recommendedAction": {
+    "actionType": "CONTACT_DRIVER",
+    "parameters": {"reason": "verify auxiliary cooling unit"}
+  },
+  "authorizationStatement": "THIS_RECOMMENDATION_IS_NOT_AUTHORIZATION"
+}

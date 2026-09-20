@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "00000000-0000-4000-8000-000000000003",
+  "correlationId": "00000000-0000-4000-8000-000000000100",
+  "occurredAt": "2026-09-19T15:00:02Z",
+  "producer": "ai-investigation-worker",
+  "evidenceId": "00000000-0000-4000-8000-000000000400",
+  "incidentId": "00000000-0000-4000-8000-000000000300",
+  "evidenceType": "POLICY",
+  "source": "Cold_Chain_Incident_SOP_v2.md#temperature-control",
+  "sourceVersion": "2.4",
+  "observedAt": "2026-09-19T15:00:00Z",
+  "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "summary": "Fresh perishables must remain between zero and four degrees Celsius."
+}

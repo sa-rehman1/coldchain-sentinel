@@ -1,0 +1,86 @@
+{
+  "$id": "https://coldchain-sentinel.local/contracts/failure-envelope.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "correlationId": {
+      "format": "uuid",
+      "title": "Correlationid",
+      "type": "string"
+    },
+    "encodedPayloadBase64": {
+      "maxLength": 1500000,
+      "minLength": 1,
+      "title": "Encodedpayloadbase64",
+      "type": "string"
+    },
+    "eventId": {
+      "format": "uuid",
+      "title": "Eventid",
+      "type": "string"
+    },
+    "failedOffset": {
+      "minimum": 0,
+      "title": "Failedoffset",
+      "type": "integer"
+    },
+    "failedPartition": {
+      "minimum": 0,
+      "title": "Failedpartition",
+      "type": "integer"
+    },
+    "failedTopic": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Failedtopic",
+      "type": "string"
+    },
+    "failureType": {
+      "const": "INVALID_MESSAGE",
+      "title": "Failuretype",
+      "type": "string"
+    },
+    "occurredAt": {
+      "format": "date-time",
+      "title": "Occurredat",
+      "type": "string"
+    },
+    "payloadHash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Payloadhash",
+      "type": "string"
+    },
+    "producer": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Producer",
+      "type": "string"
+    },
+    "reasonCode": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Reasoncode",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventId",
+    "correlationId",
+    "occurredAt",
+    "producer",
+    "failedTopic",
+    "failedPartition",
+    "failedOffset",
+    "failureType",
+    "reasonCode",
+    "payloadHash",
+    "encodedPayloadBase64"
+  ],
+  "title": "failure-envelope.v1",
+  "type": "object"
+}

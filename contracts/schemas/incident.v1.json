@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "IncidentStatus": {
+      "enum": [
+        "OPEN",
+        "INVESTIGATING",
+        "AWAITING_APPROVAL",
+        "RESOLVED"
+      ],
+      "title": "IncidentStatus",
+      "type": "string"
+    }
+  },
+  "$id": "https://coldchain-sentinel.local/contracts/incident.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "correlationId": {
+      "format": "uuid",
+      "title": "Correlationid",
+      "type": "string"
+    },
+    "detectionRule": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Detectionrule",
+      "type": "string"
+    },
+    "eventId": {
+      "format": "uuid",
+      "title": "Eventid",
+      "type": "string"
+    },
+    "incidentId": {
+      "format": "uuid",
+      "title": "Incidentid",
+      "type": "string"
+    },
+    "incidentType": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Incidenttype",
+      "type": "string"
+    },
+    "occurredAt": {
+      "format": "date-time",
+      "title": "Occurredat",
+      "type": "string"
+    },
+    "producer": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Producer",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "severity": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "shipmentId": {
+      "format": "uuid",
+      "title": "Shipmentid",
+      "type": "string"
+    },
+    "sourceEventIds": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Sourceeventids",
+      "type": "array"
+    },
+    "status": {
+      "$ref": "#/$defs/IncidentStatus"
+    }
+  },
+  "required": [
+    "eventId",
+    "correlationId",
+    "occurredAt",
+    "producer",
+    "incidentId",
+    "shipmentId",
+    "incidentType",
+    "status",
+    "severity",
+    "detectionRule",
+    "sourceEventIds"
+  ],
+  "title": "incident.v1",
+  "type": "object"
+}

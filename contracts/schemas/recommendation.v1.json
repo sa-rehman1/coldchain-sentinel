@@ -1,0 +1,166 @@
+{
+  "$defs": {
+    "RecommendedAction": {
+      "additionalProperties": false,
+      "properties": {
+        "actionType": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Actiontype",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "actionType",
+        "parameters"
+      ],
+      "title": "RecommendedAction",
+      "type": "object"
+    }
+  },
+  "$id": "https://coldchain-sentinel.local/contracts/recommendation.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "authorizationStatement": {
+      "const": "THIS_RECOMMENDATION_IS_NOT_AUTHORIZATION",
+      "title": "Authorizationstatement",
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "correlationId": {
+      "format": "uuid",
+      "title": "Correlationid",
+      "type": "string"
+    },
+    "eventId": {
+      "format": "uuid",
+      "title": "Eventid",
+      "type": "string"
+    },
+    "evidenceReferences": {
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidencereferences",
+      "type": "array"
+    },
+    "expiresAt": {
+      "format": "date-time",
+      "title": "Expiresat",
+      "type": "string"
+    },
+    "incidentId": {
+      "format": "uuid",
+      "title": "Incidentid",
+      "type": "string"
+    },
+    "model": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "occurredAt": {
+      "format": "date-time",
+      "title": "Occurredat",
+      "type": "string"
+    },
+    "policyVersion": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Policyversion",
+      "type": "string"
+    },
+    "producer": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Producer",
+      "type": "string"
+    },
+    "promptVersion": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Promptversion",
+      "type": "string"
+    },
+    "provider": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "recommendationHash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Recommendationhash",
+      "type": "string"
+    },
+    "recommendationId": {
+      "format": "uuid",
+      "title": "Recommendationid",
+      "type": "string"
+    },
+    "recommendedAction": {
+      "$ref": "#/$defs/RecommendedAction"
+    },
+    "schemaVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "uncertainty": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Uncertainty",
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventId",
+    "correlationId",
+    "occurredAt",
+    "producer",
+    "recommendationId",
+    "incidentId",
+    "evidenceReferences",
+    "confidence",
+    "uncertainty",
+    "policyVersion",
+    "promptVersion",
+    "model",
+    "provider",
+    "recommendationHash",
+    "expiresAt",
+    "recommendedAction",
+    "authorizationStatement"
+  ],
+  "title": "recommendation.v1",
+  "type": "object"
+}

@@ -1,0 +1,48 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.pre-commit-cache/
+.mypy_cache/
+.ruff_cache/
+.uv-cache/
+.docker-config/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Runtime data and logs
+*.log
+logs/
+.cache/
+tmp/
+
+# Infrastructure overrides
+docker-compose.override.yml
+compose.override.yml

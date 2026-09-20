@@ -1,0 +1,95 @@
+{
+  "$id": "https://coldchain-sentinel.local/contracts/telemetry-event.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "cargoType": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Cargotype",
+      "type": "string"
+    },
+    "correlationId": {
+      "format": "uuid",
+      "title": "Correlationid",
+      "type": "string"
+    },
+    "eventId": {
+      "format": "uuid",
+      "title": "Eventid",
+      "type": "string"
+    },
+    "latitude": {
+      "maximum": 90,
+      "minimum": -90,
+      "title": "Latitude",
+      "type": "number"
+    },
+    "longitude": {
+      "maximum": 180,
+      "minimum": -180,
+      "title": "Longitude",
+      "type": "number"
+    },
+    "occurredAt": {
+      "format": "date-time",
+      "title": "Occurredat",
+      "type": "string"
+    },
+    "producer": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Producer",
+      "type": "string"
+    },
+    "readingSequence": {
+      "minimum": 0,
+      "title": "Readingsequence",
+      "type": "integer"
+    },
+    "schemaVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "sensorId": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Sensorid",
+      "type": "string"
+    },
+    "shipmentId": {
+      "format": "uuid",
+      "title": "Shipmentid",
+      "type": "string"
+    },
+    "temperatureCelsius": {
+      "maximum": 100,
+      "minimum": -100,
+      "title": "Temperaturecelsius",
+      "type": "number"
+    },
+    "vehicleId": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Vehicleid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventId",
+    "correlationId",
+    "occurredAt",
+    "producer",
+    "shipmentId",
+    "vehicleId",
+    "sensorId",
+    "latitude",
+    "longitude",
+    "temperatureCelsius",
+    "cargoType",
+    "readingSequence"
+  ],
+  "title": "telemetry-event.v1",
+  "type": "object"
+}

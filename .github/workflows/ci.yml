@@ -1,0 +1,75 @@
+name: ColdChain Sentinel Validation CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.4-alpine
+        env:
+          POSTGRES_USER: coldchain_test
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: coldchain_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U coldchain_test -d coldchain_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      COLDCHAIN_ENVIRONMENT: test
+      COLDCHAIN_TEST_DATABASE_URL: postgresql+asyncpg://coldchain_test:ci-test-only@localhost:5432/coldchain_test
+      COLDCHAIN_DATABASE_URL: postgresql+asyncpg://coldchain_test:ci-test-only@localhost:5432/coldchain_test
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.8.12"
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --frozen --all-groups
+
+      - name: Validate lock file
+        run: uv lock --check
+
+      - name: Lint and format
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Type check
+        run: uv run mypy
+
+      - name: Apply and inspect migrations
+        run: |
+          uv run alembic upgrade head
+          uv run alembic check
+
+      - name: Validate contracts and run tests
+        run: uv run pytest
+
+      - name: Check repository safety
+        run: |
+          uv run python scripts/check_tracked_env.py
+          uv run python scripts/check_tracked_secrets.py
+          git diff --check
+
+      - name: Validate Docker Compose
+        run: docker compose --env-file .env.example config -q

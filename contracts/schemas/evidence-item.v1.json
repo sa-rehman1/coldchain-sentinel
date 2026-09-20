@@ -1,0 +1,102 @@
+{
+  "$defs": {
+    "EvidenceType": {
+      "enum": [
+        "TELEMETRY",
+        "WEATHER",
+        "POLICY",
+        "OPERATIONAL"
+      ],
+      "title": "EvidenceType",
+      "type": "string"
+    }
+  },
+  "$id": "https://coldchain-sentinel.local/contracts/evidence-item.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "contentHash": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Contenthash",
+      "type": "string"
+    },
+    "correlationId": {
+      "format": "uuid",
+      "title": "Correlationid",
+      "type": "string"
+    },
+    "eventId": {
+      "format": "uuid",
+      "title": "Eventid",
+      "type": "string"
+    },
+    "evidenceId": {
+      "format": "uuid",
+      "title": "Evidenceid",
+      "type": "string"
+    },
+    "evidenceType": {
+      "$ref": "#/$defs/EvidenceType"
+    },
+    "incidentId": {
+      "format": "uuid",
+      "title": "Incidentid",
+      "type": "string"
+    },
+    "observedAt": {
+      "format": "date-time",
+      "title": "Observedat",
+      "type": "string"
+    },
+    "occurredAt": {
+      "format": "date-time",
+      "title": "Occurredat",
+      "type": "string"
+    },
+    "producer": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Producer",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    },
+    "source": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+    },
+    "sourceVersion": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Sourceversion",
+      "type": "string"
+    },
+    "summary": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventId",
+    "correlationId",
+    "occurredAt",
+    "producer",
+    "evidenceId",
+    "incidentId",
+    "evidenceType",
+    "source",
+    "sourceVersion",
+    "observedAt",
+    "contentHash",
+    "summary"
+  ],
+  "title": "evidence-item.v1",
+  "type": "object"
+}

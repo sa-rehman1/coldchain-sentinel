@@ -1,0 +1,40 @@
+"""Kubernetes- and Compose-compatible health endpoints."""
+
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
+
+from coldchain.api.dependencies import get_readiness_service
+from coldchain.api.errors import ServiceUnavailableError
+from coldchain.application.health import ReadinessService
+
+router = APIRouter(prefix="/health", tags=["health"])
+
+
+class LivenessResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["alive"] = "alive"
+
+
+class ReadinessResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ready"] = "ready"
+    checks: dict[str, str]
+
+
+@router.get("/live", response_model=LivenessResponse)
+async def liveness() -> LivenessResponse:
+    return LivenessResponse()
+
+
+@router.get("/ready", response_model=ReadinessResponse)
+async def readiness(
+    service: Annotated[ReadinessService, Depends(get_readiness_service)],
+) -> ReadinessResponse:
+    result = await service.check()
+    if not result.ready:
+        raise ServiceUnavailableError("one or more required dependencies are unavailable")
+    return ReadinessResponse(checks=result.checks)

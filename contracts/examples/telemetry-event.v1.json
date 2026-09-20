@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "00000000-0000-4000-8000-000000000001",
+  "correlationId": "00000000-0000-4000-8000-000000000100",
+  "occurredAt": "2026-09-19T15:00:00Z",
+  "producer": "telemetry-simulator",
+  "shipmentId": "00000000-0000-4000-8000-000000000200",
+  "vehicleId": "vehicle-42",
+  "sensorId": "sensor-7",
+  "latitude": 33.77,
+  "longitude": -118.19,
+  "temperatureCelsius": 5.4,
+  "cargoType": "FRESH_PERISHABLES",
+  "readingSequence": 1042
+}

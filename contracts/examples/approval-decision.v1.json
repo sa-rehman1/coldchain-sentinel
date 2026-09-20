@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "00000000-0000-4000-8000-000000000005",
+  "correlationId": "00000000-0000-4000-8000-000000000100",
+  "occurredAt": "2026-09-19T15:05:00Z",
+  "producer": "control-plane",
+  "approvalId": "00000000-0000-4000-8000-000000000600",
+  "recommendationId": "00000000-0000-4000-8000-000000000500",
+  "incidentId": "00000000-0000-4000-8000-000000000300",
+  "reviewerIdentity": "dispatcher@example.test",
+  "decision": "APPROVED",
+  "decidedAt": "2026-09-19T15:05:00Z",
+  "rationale": "Telemetry and SOP evidence support contacting the driver.",
+  "recommendationHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "policyVersion": "cold-chain-sop-2.4"
+}

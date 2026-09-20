@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "00000000-0000-4000-8000-000000000002",
+  "correlationId": "00000000-0000-4000-8000-000000000100",
+  "occurredAt": "2026-09-19T15:00:01Z",
+  "producer": "telemetry-worker",
+  "incidentId": "00000000-0000-4000-8000-000000000300",
+  "shipmentId": "00000000-0000-4000-8000-000000000200",
+  "incidentType": "TEMPERATURE_BREACH",
+  "status": "OPEN",
+  "severity": "HIGH",
+  "detectionRule": "fresh-perishables-max-temperature-v1",
+  "sourceEventIds": ["00000000-0000-4000-8000-000000000001"]
+}

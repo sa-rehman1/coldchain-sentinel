@@ -1,0 +1,107 @@
+{
+  "$id": "https://coldchain-sentinel.local/contracts/action-command.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "actionType": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Actiontype",
+      "type": "string"
+    },
+    "approvalId": {
+      "format": "uuid",
+      "title": "Approvalid",
+      "type": "string"
+    },
+    "commandId": {
+      "format": "uuid",
+      "title": "Commandid",
+      "type": "string"
+    },
+    "correlationId": {
+      "format": "uuid",
+      "title": "Correlationid",
+      "type": "string"
+    },
+    "eventId": {
+      "format": "uuid",
+      "title": "Eventid",
+      "type": "string"
+    },
+    "idempotencyKey": {
+      "maxLength": 200,
+      "minLength": 16,
+      "title": "Idempotencykey",
+      "type": "string"
+    },
+    "incidentId": {
+      "format": "uuid",
+      "title": "Incidentid",
+      "type": "string"
+    },
+    "occurredAt": {
+      "format": "date-time",
+      "title": "Occurredat",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          }
+        ]
+      },
+      "title": "Parameters",
+      "type": "object"
+    },
+    "policyVersion": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Policyversion",
+      "type": "string"
+    },
+    "producer": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Producer",
+      "type": "string"
+    },
+    "recommendationId": {
+      "format": "uuid",
+      "title": "Recommendationid",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "1.0",
+      "default": "1.0",
+      "title": "Schemaversion",
+      "type": "string"
+    }
+  },
+  "required": [
+    "eventId",
+    "correlationId",
+    "occurredAt",
+    "producer",
+    "commandId",
+    "incidentId",
+    "approvalId",
+    "recommendationId",
+    "actionType",
+    "parameters",
+    "idempotencyKey",
+    "policyVersion"
+  ],
+  "title": "action-command.v1",
+  "type": "object"
+}

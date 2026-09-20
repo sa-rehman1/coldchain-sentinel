@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "1.0",
+  "eventId": "00000000-0000-4000-8000-000000000007",
+  "correlationId": "00000000-0000-4000-8000-000000000100",
+  "occurredAt": "2026-09-19T15:05:02Z",
+  "producer": "control-plane",
+  "auditEventId": "00000000-0000-4000-8000-000000000800",
+  "actorType": "USER",
+  "actorId": "dispatcher@example.test",
+  "eventType": "APPROVAL_RECORDED",
+  "entityType": "INCIDENT",
+  "entityId": "00000000-0000-4000-8000-000000000300",
+  "payload": {"decision": "APPROVED"},
+  "previousEventHash": null,
+  "eventHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+}
