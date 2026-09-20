@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from coldchain.ai.models import RecommendationOutput, RecommendationProvenance
 from coldchain.contracts import (
     ActionCommand,
     ApprovalDecision,
@@ -23,6 +24,8 @@ SCHEMAS = {
     "incident.v1": Incident,
     "recommendation.v1": Recommendation,
     "telemetry-event.v1": TelemetryEvent,
+    "ai-recommendation-output.v1": RecommendationOutput,
+    "recommendation-provenance.v1": RecommendationProvenance,
 }
 
 

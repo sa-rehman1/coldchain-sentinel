@@ -3,9 +3,15 @@
 from dataclasses import dataclass
 from typing import Protocol
 
+from coldchain.config import Settings
+
 
 class DatabaseProbe(Protocol):
     async def ping(self) -> None: ...
+
+
+class ReadyProbe(Protocol):
+    def ready(self) -> bool: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,3 +32,43 @@ class ReadinessService:
         except Exception:
             return ReadinessResult(ready=False, checks={"database": "unavailable"})
         return ReadinessResult(ready=True, checks={"database": "ready"})
+
+
+@dataclass(frozen=True, slots=True)
+class AiHealthResult:
+    selected_provider: str
+    provider_configured: bool
+    live_calls_enabled: bool
+    qdrant_readiness: str
+    embedding_provider_readiness: str
+    fallback_available: bool
+
+
+class AiHealthService:
+    """Safe configuration status; never invokes a model or returns a secret."""
+
+    def __init__(self, settings: Settings, qdrant_probe: ReadyProbe | None = None) -> None:
+        self._settings = settings
+        self._qdrant_probe = qdrant_probe
+
+    def check(self) -> AiHealthResult:
+        import os
+
+        qdrant = "not_checked"
+        if self._qdrant_probe is not None:
+            try:
+                qdrant = "ready" if self._qdrant_probe.ready() else "unavailable"
+            except Exception:
+                qdrant = "unavailable"
+        return AiHealthResult(
+            selected_provider=self._settings.llm_provider,
+            provider_configured=bool(os.getenv(self._settings.llm_api_key_env, "")),
+            live_calls_enabled=self._settings.llm_live_calls_enabled,
+            qdrant_readiness=qdrant,
+            embedding_provider_readiness=(
+                "ready"
+                if self._settings.embedding_provider == "deterministic"
+                else "optional_not_loaded"
+            ),
+            fallback_available=True,
+        )

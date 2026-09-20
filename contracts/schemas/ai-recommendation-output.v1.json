@@ -1,0 +1,100 @@
+{
+  "$defs": {
+    "RecommendedAction": {
+      "enum": [
+        "HOLD_SHIPMENT",
+        "REQUEST_INSPECTION",
+        "ESCALATE_DISPATCHER",
+        "ADD_NOTE"
+      ],
+      "title": "RecommendedAction",
+      "type": "string"
+    },
+    "UncertaintyLevel": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH"
+      ],
+      "title": "UncertaintyLevel",
+      "type": "string"
+    }
+  },
+  "$id": "https://coldchain-sentinel.local/contracts/ai-recommendation-output.v1.json",
+  "additionalProperties": false,
+  "description": "Closed schema accepted from an untrusted model response.",
+  "properties": {
+    "cited_evidence_chunk_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "title": "Cited Evidence Chunk Ids",
+      "type": "array"
+    },
+    "cited_incident_evidence_ids": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "title": "Cited Incident Evidence Ids",
+      "type": "array"
+    },
+    "concise_rationale": {
+      "maxLength": 800,
+      "minLength": 1,
+      "title": "Concise Rationale",
+      "type": "string"
+    },
+    "contraindications": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "title": "Contraindications",
+      "type": "array"
+    },
+    "evidence_sufficient": {
+      "title": "Evidence Sufficient",
+      "type": "boolean"
+    },
+    "missing_information": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 8,
+      "title": "Missing Information",
+      "type": "array"
+    },
+    "recommendation_expiry": {
+      "format": "date-time",
+      "title": "Recommendation Expiry",
+      "type": "string"
+    },
+    "recommended_action": {
+      "$ref": "#/$defs/RecommendedAction"
+    },
+    "schema_version": {
+      "pattern": "^1\\.0$",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "uncertainty_level": {
+      "$ref": "#/$defs/UncertaintyLevel"
+    }
+  },
+  "required": [
+    "recommended_action",
+    "concise_rationale",
+    "cited_evidence_chunk_ids",
+    "cited_incident_evidence_ids",
+    "contraindications",
+    "missing_information",
+    "evidence_sufficient",
+    "uncertainty_level",
+    "recommendation_expiry",
+    "schema_version"
+  ],
+  "title": "ai-recommendation-output.v1",
+  "type": "object"
+}

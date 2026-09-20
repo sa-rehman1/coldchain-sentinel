@@ -1,0 +1,235 @@
+{
+  "$id": "https://coldchain-sentinel.local/contracts/recommendation-provenance.v1.json",
+  "additionalProperties": false,
+  "properties": {
+    "allowed_action_version": {
+      "default": "1.0",
+      "title": "Allowed Action Version",
+      "type": "string"
+    },
+    "api_family": {
+      "default": "openai-compatible",
+      "title": "Api Family",
+      "type": "string"
+    },
+    "base_url_identifier": {
+      "title": "Base Url Identifier",
+      "type": "string"
+    },
+    "billing_mode": {
+      "title": "Billing Mode",
+      "type": "string"
+    },
+    "cited_chunk_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Cited Chunk Ids",
+      "type": "array"
+    },
+    "cited_document_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Cited Document Ids",
+      "type": "array"
+    },
+    "cited_incident_evidence_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Cited Incident Evidence Ids",
+      "type": "array"
+    },
+    "cited_section_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Cited Section Ids",
+      "type": "array"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "correlation_id": {
+      "title": "Correlation Id",
+      "type": "string"
+    },
+    "cost_estimation_basis": {
+      "title": "Cost Estimation Basis",
+      "type": "string"
+    },
+    "estimated_cost": {
+      "minimum": 0,
+      "title": "Estimated Cost",
+      "type": "number"
+    },
+    "evidence_sufficient": {
+      "title": "Evidence Sufficient",
+      "type": "boolean"
+    },
+    "fallback_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Fallback Reason"
+    },
+    "fallback_used": {
+      "title": "Fallback Used",
+      "type": "boolean"
+    },
+    "input_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Input Tokens"
+    },
+    "latency_ms": {
+      "minimum": 0,
+      "title": "Latency Ms",
+      "type": "integer"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "output_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Output Tokens"
+    },
+    "prompt_hash": {
+      "title": "Prompt Hash",
+      "type": "string"
+    },
+    "prompt_id": {
+      "title": "Prompt Id",
+      "type": "string"
+    },
+    "prompt_version": {
+      "title": "Prompt Version",
+      "type": "string"
+    },
+    "provider": {
+      "title": "Provider",
+      "type": "string"
+    },
+    "provider_request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Request Id"
+    },
+    "recommendation_expiry": {
+      "format": "date-time",
+      "title": "Recommendation Expiry",
+      "type": "string"
+    },
+    "response_schema_version": {
+      "default": "1.0",
+      "title": "Response Schema Version",
+      "type": "string"
+    },
+    "retrieved_chunk_ids": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Retrieved Chunk Ids",
+      "type": "array"
+    },
+    "retry_count": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Retry Count",
+      "type": "integer"
+    },
+    "sop_corpus_version": {
+      "title": "Sop Corpus Version",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "total_tokens": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Total Tokens"
+    },
+    "uncertainty_level": {
+      "title": "Uncertainty Level",
+      "type": "string"
+    },
+    "validation_result": {
+      "title": "Validation Result",
+      "type": "string"
+    }
+  },
+  "required": [
+    "provider",
+    "base_url_identifier",
+    "model",
+    "prompt_id",
+    "prompt_version",
+    "prompt_hash",
+    "sop_corpus_version",
+    "correlation_id",
+    "started_at",
+    "completed_at",
+    "latency_ms",
+    "billing_mode",
+    "cost_estimation_basis",
+    "estimated_cost",
+    "retry_count",
+    "fallback_used",
+    "validation_result",
+    "evidence_sufficient",
+    "uncertainty_level",
+    "recommendation_expiry"
+  ],
+  "title": "recommendation-provenance.v1",
+  "type": "object"
+}

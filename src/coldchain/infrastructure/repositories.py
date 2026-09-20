@@ -139,6 +139,7 @@ class SqlWorkflowRepository(WorkflowRepository):
                     rationale=recommendation.rationale,
                     expires_at=recommendation.expires_at,
                     non_authoritative=recommendation.non_authoritative,
+                    provenance=recommendation.provenance or {},
                 )
             )
             await session.flush()
@@ -190,6 +191,7 @@ class SqlWorkflowRepository(WorkflowRepository):
                         "actionType": recommendation.action_type,
                         "expiresAt": recommendation.expires_at.isoformat(),
                         "nonAuthoritative": recommendation.non_authoritative,
+                        "provenance": recommendation.provenance or {},
                     },
                 ),
                 (
@@ -238,6 +240,7 @@ class SqlWorkflowRepository(WorkflowRepository):
                 result["recommendationId"] = str(recommendation.recommendation_id)
                 result["recommendedAction"] = recommendation.action_type
                 result["recommendationExpiresAt"] = recommendation.expires_at.isoformat()
+                result["recommendationProvenance"] = recommendation.provenance
             return result
 
     async def timeline(self, incident_id: UUID) -> list[dict[str, object]]:

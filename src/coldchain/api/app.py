@@ -20,7 +20,7 @@ from coldchain.api.middleware import CorrelationIdMiddleware
 from coldchain.api.routes.health import router as health_router
 from coldchain.api.routes.incidents import router as incidents_router
 from coldchain.application.actions import SimulatedColdChainActionAdapter
-from coldchain.application.health import ReadinessService
+from coldchain.application.health import AiHealthService, ReadinessService
 from coldchain.application.interfaces import (
     ActionAdapter,
     ManagedTelemetryPublisher,
@@ -36,6 +36,7 @@ from coldchain.config import Settings, get_settings
 from coldchain.infrastructure.database import build_database
 from coldchain.infrastructure.repositories import SqlWorkflowRepository
 from coldchain.observability.logging import configure_logging
+from coldchain.retrieval.core import DeterministicEmbeddingProvider, QdrantVectorStore
 
 API_PREFIX = "/api/v1"
 
@@ -94,6 +95,14 @@ def create_app(
     app.state.settings = resolved
     app.state.database = database
     app.state.readiness_service = ReadinessService(database)
+    app.state.ai_health_service = AiHealthService(
+        resolved,
+        QdrantVectorStore(
+            resolved.qdrant_url,
+            resolved.qdrant_collection,
+            DeterministicEmbeddingProvider().dimensions,
+        ),
+    )
     app.state.workflow_repository = repository
     app.state.telemetry_publisher = publisher
     app.state.approval_service = ApprovalService(repository, adapter) if repository else None

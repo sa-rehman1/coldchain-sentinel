@@ -1,0 +1,50 @@
+{
+  "corpus_version": "1.0.0",
+  "schema_version": "1.0",
+  "documents": [
+    {
+      "document_id": "CCS-SOP-TEMP-001", "title": "Fresh and Perishable Temperature Excursions", "semantic_version": "1.0.0", "effective_date": "2026-09-19", "superseded_date": null, "checksum": "9f09438b379f259f32fd21c03867a2832799bb42bf22abef7d8c265c784c32c7", "classification": "INTERNAL", "author": "ColdChain Sentinel", "source": "ColdChain Sentinel", "schema_version": "1.0",
+      "sections": [
+        {"section_id": "TEMP-001-S1", "text": "A temperature excursion is evaluated against the cargo-specific deterministic policy and the ordered telemetry record. An AI recommendation is advisory evidence only and cannot decide disposition."},
+        {"section_id": "TEMP-001-S2", "text": "For fresh perishables, preserve the shipment identity, calibrated sensor identity, timestamps, reading sequence, measured temperatures, cargo profile, and applicable policy version. When evidence is sufficient, recommend a shipment hold pending dispatcher review; never represent the recommendation as authorization."}
+      ]
+    },
+    {
+      "document_id": "CCS-SOP-EVID-001", "title": "Evidence and Sensor Integrity", "semantic_version": "1.0.0", "effective_date": "2026-09-19", "superseded_date": null, "checksum": "12734ace07d75d39ceabaf943589cd5665f76fe3922379dbf0bbd1660f1a2673", "classification": "INTERNAL", "author": "ColdChain Sentinel", "source": "ColdChain Sentinel", "schema_version": "1.0",
+      "sections": [
+        {"section_id": "EVID-001-S1", "text": "Required evidence includes immutable telemetry identifiers, UTC event time, sensor and vehicle identifiers, sequence continuity, policy inputs, and content hashes. Record missing fields explicitly rather than inferring them."},
+        {"section_id": "EVID-001-S2", "text": "Check sensor calibration status, battery or power anomalies, impossible jumps, duplicated readings, clock drift, and agreement with an independent probe when available. Conflicting sensors require inspection and escalation; do not select the convenient reading."},
+        {"section_id": "EVID-001-S3", "text": "Stale or missing telemetry is insufficient evidence for release. Preserve the last trustworthy observation, mark the gap, request a fresh measurement, and keep deterministic policy authoritative."}
+      ]
+    },
+    {
+      "document_id": "CCS-SOP-REEFER-001", "title": "Reefer Malfunction Response", "semantic_version": "1.0.0", "effective_date": "2026-09-19", "superseded_date": null, "checksum": "1703527cbe66f4de62ff3075580d5e4ad7bafcf9ced3ee4242cf711b2aad9d99", "classification": "INTERNAL", "author": "ColdChain Sentinel", "source": "ColdChain Sentinel", "schema_version": "1.0",
+      "sections": [
+        {"section_id": "REEFER-001-S1", "text": "Suspected reefer malfunction indicators include sustained setpoint deviation, unit alarms, loss of power, abnormal cycling, and disagreement between supply-air and cargo probes. Record the alarm and telemetry evidence without issuing equipment commands."},
+        {"section_id": "REEFER-001-S2", "text": "Escalate suspected malfunction to the dispatcher and qualified maintenance contact. Recommend inspection and a shipment hold when policy requires it. Do not disable refrigeration, change setpoints, or claim that repairs were performed."}
+      ]
+    },
+    {
+      "document_id": "CCS-SOP-HOLD-001", "title": "Shipment Hold, Inspection, and Release", "semantic_version": "1.0.0", "effective_date": "2026-09-19", "superseded_date": null, "checksum": "e70f0709e2482ef298811c9f0822afcac6514a99433179f5f9c3fa167cd0becf", "classification": "INTERNAL", "author": "ColdChain Sentinel", "source": "ColdChain Sentinel", "schema_version": "1.0",
+      "sections": [
+        {"section_id": "HOLD-001-S1", "text": "HOLD_SHIPMENT always requires authenticated dispatcher approval. The recommendation service cannot create a hold command or change incident state directly."},
+        {"section_id": "HOLD-001-S2", "text": "Inspection should verify cargo temperature with a calibrated independent instrument, packaging condition, door-seal integrity, reefer alarms, trip history, and the duration and magnitude of exposure."},
+        {"section_id": "HOLD-001-S3", "text": "Release requires complete inspection evidence, a resolved sensor-integrity assessment, compliance with the applicable deterministic cargo policy, documented dispatcher approval, and no active kill switch. Uncertainty or missing telemetry prevents release."}
+      ]
+    },
+    {
+      "document_id": "CCS-SOP-ESC-001", "title": "Escalation and Dispatcher Responsibilities", "semantic_version": "1.0.0", "effective_date": "2026-09-19", "superseded_date": null, "checksum": "6c2db4c45f21bae65d3390d9d66f3590bb688da088b56726015b933eb1c5d2f5", "classification": "INTERNAL", "author": "ColdChain Sentinel", "source": "ColdChain Sentinel", "schema_version": "1.0",
+      "sections": [
+        {"section_id": "ESC-001-S1", "text": "Level 1 covers incomplete or stale evidence, Level 2 covers a policy-confirmed excursion or conflicting sensors, and Level 3 covers severe exposure, reefer failure, or safety risk. Escalation level does not replace deterministic governance."},
+        {"section_id": "ESC-001-S2", "text": "The dispatcher reviews evidence and citations, obtains missing inspection data, records rationale, approves or rejects controlled actions, and confirms downstream execution status. The dispatcher must not rely on hidden model reasoning."}
+      ]
+    },
+    {
+      "document_id": "CCS-SOP-GOV-001", "title": "Automation Prohibitions and Governance", "semantic_version": "1.0.0", "effective_date": "2026-09-19", "superseded_date": null, "checksum": "cd26145bc026cf1dfbad152aa11c2263e6d90cbd6199bdab38e11deed6f889a2", "classification": "INTERNAL", "author": "ColdChain Sentinel", "source": "ColdChain Sentinel", "schema_version": "1.0",
+      "sections": [
+        {"section_id": "GOV-001-S1", "text": "Automated systems must not approve holds, release cargo, change refrigeration settings, bypass a dispatcher, override a kill switch, fabricate evidence, or modify governance policy. Model output remains untrusted until schema, citation, expiry, and policy validation pass."},
+        {"section_id": "GOV-001-S2", "text": "Provider failure, rate limiting, invalid output, malicious context, or missing configuration triggers the deterministic recommendation fallback. Record a sanitized reason and re-run deterministic governance while preserving the human approval boundary."}
+      ]
+    }
+  ]
+}

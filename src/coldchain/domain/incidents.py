@@ -92,6 +92,7 @@ class Recommendation:
     rationale: str
     expires_at: datetime
     non_authoritative: bool = True
+    provenance: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)

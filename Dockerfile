@@ -14,6 +14,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src/coldchain ./src/coldchain
 COPY alembic.ini ./
 COPY alembic ./alembic
+COPY sop ./sop
 RUN uv sync --frozen --no-dev
 
 RUN addgroup --system coldchain && adduser --system --ingroup coldchain coldchain

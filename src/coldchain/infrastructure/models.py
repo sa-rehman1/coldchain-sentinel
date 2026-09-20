@@ -82,6 +82,7 @@ class RecommendationRecord(Base):
     rationale: Mapped[str] = mapped_column(Text)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     non_authoritative: Mapped[bool]
+    provenance: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
 
 
 class GovernanceRecord(Base):

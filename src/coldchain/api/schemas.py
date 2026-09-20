@@ -29,6 +29,7 @@ class IncidentView(ApiModel):
     recommendation_id: UUID | None = None
     recommended_action: str | None = None
     recommendation_expires_at: str | None = None
+    recommendation_provenance: dict[str, Any] | None = None
 
 
 class TimelineEventView(ApiModel):

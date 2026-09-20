@@ -1,12 +1,18 @@
-from datetime import UTC, datetime, timedelta
+from dataclasses import replace
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 
+from coldchain.ai.provider import OpenAICompatibleRecommendationProvider, ProviderConfig
 from coldchain.application.actions import SimulatedColdChainActionAdapter
 from coldchain.application.interfaces import Identity, ProcessingResult, WorkflowRepository
-from coldchain.application.recommendations import DeterministicLocalRecommendationProvider
+from coldchain.application.recommendations import (
+    DeterministicLocalRecommendationProvider,
+    RetrievalGroundedRecommendationProvider,
+)
 from coldchain.application.workflow import (
     ApprovalService,
     AuthorizationError,
@@ -26,6 +32,12 @@ from coldchain.domain import (
 )
 from coldchain.domain.breach import FreshPerishablePolicy
 from coldchain.domain.incidents import utc_now
+from coldchain.retrieval.core import (
+    DeterministicEmbeddingProvider,
+    InMemoryVectorStore,
+    SopDocument,
+    chunk_document,
+)
 
 
 def telemetry(temperature: float = 10.5, sequence: int = 1) -> TelemetryEvent:
@@ -151,6 +163,76 @@ async def test_breach_builds_evidence_recommendation_and_approval_governance() -
     assert governance.decision == "APPROVAL_REQUIRED"
 
 
+async def test_json_validation_failure_falls_back_without_executing_command(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "unit-test-placeholder")
+    calls = 0
+
+    def rejected(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            400,
+            json={
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "json_validate_failed",
+                    "message": "provider content must not enter fallback provenance",
+                }
+            },
+        )
+
+    provider = OpenAICompatibleRecommendationProvider(
+        ProviderConfig(
+            provider="groq",
+            base_url="https://api.groq.com/openai/v1",
+            api_key_env="GROQ_API_KEY",
+            model="openai/gpt-oss-20b",
+            timeout_seconds=2,
+            max_output_tokens=1200,
+            temperature=0,
+            reasoning_effort="low",
+            live_calls_enabled=True,
+            billing_mode="free_tier",
+        ),
+        httpx.Client(transport=httpx.MockTransport(rejected)),
+    )
+    document = SopDocument(
+        "workflow-sop",
+        "Synthetic workflow SOP",
+        "1.0.0",
+        date(2020, 1, 1),
+        None,
+        "a" * 64,
+        "INTERNAL",
+        "ColdChain Sentinel",
+        "ColdChain Sentinel",
+        "1.0",
+        (("hold", "HIGH temperature excursion hold dispatcher evidence"),),
+    )
+    chunks = chunk_document(document)
+    embeddings = DeterministicEmbeddingProvider()
+    store = InMemoryVectorStore()
+    store.upsert(chunks, embeddings.embed([chunk.text for chunk in chunks]))
+    recommendation_provider = RetrievalGroundedRecommendationProvider(provider, store, embeddings)
+    repository = FakeRepository()
+
+    await TemperatureBreachWorkflow(repository, recommendation_provider).process(telemetry())
+
+    assert calls == 1
+    assert repository.saved is not None
+    recommendation = cast(Recommendation, repository.saved[4])
+    governance = cast(GovernanceEvaluation, repository.saved[5])
+    assert recommendation.provider == "deterministic-local-1.0"
+    assert recommendation.provenance is not None
+    assert recommendation.provenance["fallbackUsed"] is True
+    assert recommendation.provenance["fallbackReason"] == "provider_bad_request"
+    assert "provider content" not in repr(recommendation.provenance)
+    assert governance.decision == "APPROVAL_REQUIRED"
+    assert repository.completed is None
+
+
 async def test_normal_and_unsupported_cargo_do_not_create_incidents() -> None:
     repository = FakeRepository()
     workflow = TemperatureBreachWorkflow(repository, DeterministicLocalRecommendationProvider())
@@ -244,6 +326,33 @@ async def test_governance_rejects_unknown_missing_evidence_and_authority_claims(
     assert unknown.reason_codes == ("UNKNOWN_RECOMMENDATION",)
     assert missing.reason_codes == ("MISSING_EVIDENCE",)
     assert authoritative.reason_codes == ("AUTHORITATIVE_RECOMMENDATION_REJECTED",)
+
+
+async def test_governance_independently_validates_ai_provenance() -> None:
+    repository = FakeRepository()
+    workflow = TemperatureBreachWorkflow(repository, DeterministicLocalRecommendationProvider())
+    await workflow.process(telemetry())
+    assert repository.saved is not None
+    incident = cast(Incident, repository.saved[2])
+    evidence = cast(EvidenceSnapshot, repository.saved[3])
+    base = cast(Recommendation, repository.saved[4])
+    provenance = {
+        "api_family": "openai-compatible",
+        "provider": "groq",
+        "validation_result": "valid",
+        "response_schema_version": "1.0",
+        "evidence_sufficient": True,
+        "cited_chunk_ids": ["chunk-1"],
+        "retrieved_chunk_ids": ["chunk-1"],
+        "cited_incident_evidence_ids": [str(evidence.evidence_id)],
+    }
+    valid = replace(base, provider="groq:model", provenance=provenance)
+    invalid = replace(valid, provenance={**provenance, "retrieved_chunk_ids": []})
+    assert workflow._evaluate_governance(incident, evidence, valid, utc_now()).decision == (
+        "APPROVAL_REQUIRED"
+    )
+    rejected = workflow._evaluate_governance(incident, evidence, invalid, utc_now())
+    assert rejected.reason_codes == ("AI_PROVENANCE_VALIDATION_FAILED",)
 
 
 async def test_approval_requires_dispatcher_and_execution_is_idempotent() -> None:

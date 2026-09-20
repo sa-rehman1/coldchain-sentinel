@@ -10,6 +10,7 @@ PATTERNS = {
     "aws-access-key": re.compile(r"AKIA[0-9A-Z]{16}"),
     "github-token": re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
     "openai-token": re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+    "groq-token": re.compile(r"gsk_[A-Za-z0-9_-]{20,}"),
     "sql-literal-password": re.compile(r"(?i)\bPASSWORD\s*=\s*'(?!(?:\$\(|change-me-))[^']+'"),
 }
 

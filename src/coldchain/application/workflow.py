@@ -22,6 +22,7 @@ from coldchain.domain import (
     GovernanceEvaluation,
     Incident,
     IncidentState,
+    Recommendation,
     TemperatureReading,
     transition,
 )
@@ -137,8 +138,6 @@ class TemperatureBreachWorkflow:
         recommendation: object,
         now: datetime,
     ) -> GovernanceEvaluation:
-        from coldchain.domain import Recommendation
-
         reason_codes: tuple[str, ...]
         decision = GovernanceDecision.PROHIBITED
         if not isinstance(recommendation, Recommendation):
@@ -152,6 +151,12 @@ class TemperatureBreachWorkflow:
             reason_codes = ("RECOMMENDATION_EXPIRED",)
         elif not recommendation.non_authoritative:
             reason_codes = ("AUTHORITATIVE_RECOMMENDATION_REJECTED",)
+        elif (
+            recommendation.provenance
+            and recommendation.provenance.get("api_family") == "openai-compatible"
+            and self._ai_provenance_invalid(recommendation, evidence)
+        ):
+            reason_codes = ("AI_PROVENANCE_VALIDATION_FAILED",)
         else:
             result = self._governance.evaluate(
                 ActionRequest(recommendation.action_type),
@@ -178,6 +183,22 @@ class TemperatureBreachWorkflow:
             reason_codes=reason_codes,
             inputs={"evidenceId": str(evidence.evidence_id)},
             evaluated_at=now,
+        )
+
+    @staticmethod
+    def _ai_provenance_invalid(recommendation: Recommendation, evidence: EvidenceSnapshot) -> bool:
+        provenance = recommendation.provenance or {}
+        cited_chunks = set(provenance.get("cited_chunk_ids", []))
+        retrieved_chunks = set(provenance.get("retrieved_chunk_ids", []))
+        provider = str(provenance.get("provider", ""))
+        return bool(
+            provenance.get("validation_result") != "valid"
+            or provenance.get("response_schema_version") != "1.0"
+            or not provenance.get("evidence_sufficient")
+            or not cited_chunks
+            or not cited_chunks <= retrieved_chunks
+            or str(evidence.evidence_id) not in provenance.get("cited_incident_evidence_ids", [])
+            or not recommendation.provider.startswith(provider + ":")
         )
 
 

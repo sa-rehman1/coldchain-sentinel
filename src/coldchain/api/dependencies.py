@@ -5,13 +5,17 @@ from typing import cast
 from fastapi import Request
 
 from coldchain.api.errors import ServiceUnavailableError
-from coldchain.application.health import ReadinessService
+from coldchain.application.health import AiHealthService, ReadinessService
 from coldchain.application.interfaces import TelemetryPublisher, WorkflowRepository
 from coldchain.application.workflow import ApprovalService
 
 
 def get_readiness_service(request: Request) -> ReadinessService:
     return cast(ReadinessService, request.app.state.readiness_service)
+
+
+def get_ai_health_service(request: Request) -> AiHealthService:
+    return cast(AiHealthService, request.app.state.ai_health_service)
 
 
 def get_repository(request: Request) -> WorkflowRepository:

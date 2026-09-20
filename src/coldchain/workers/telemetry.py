@@ -11,7 +11,7 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
 from pydantic import ValidationError
 
-from coldchain.application.recommendations import DeterministicLocalRecommendationProvider
+from coldchain.application.recommendations import build_recommendation_provider
 from coldchain.application.workflow import TemperatureBreachWorkflow
 from coldchain.config import get_settings
 from coldchain.contracts.models import FailureEnvelope, TelemetryEvent
@@ -143,7 +143,7 @@ async def run_worker() -> None:
     repository = SqlWorkflowRepository(database)
     workflow = TemperatureBreachWorkflow(
         repository,
-        DeterministicLocalRecommendationProvider(),
+        build_recommendation_provider(settings),
         kill_switch_active=settings.governance_kill_switch_active,
     )
     try:

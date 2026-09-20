@@ -78,6 +78,21 @@ async def test_readiness_passes_with_healthy_probe() -> None:
     assert response.json() == {"status": "ready", "checks": {"database": "ready"}}
 
 
+async def test_ai_health_is_safe_and_does_not_require_a_key() -> None:
+    app = create_app(Settings(environment="test", database_url=None))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        response = await client.get("/api/v1/health/ai")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["selected_provider"] == "groq"
+    assert payload["live_calls_enabled"] is False
+    assert payload["fallback_available"] is True
+    assert "api_key" not in str(payload).lower()
+
+
 async def test_http_errors_use_public_error_envelope() -> None:
     app = create_app(Settings(environment="test", database_url=None))
     async with httpx.AsyncClient(

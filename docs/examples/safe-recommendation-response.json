@@ -1,0 +1,12 @@
+{
+  "recommended_action": "HOLD_SHIPMENT",
+  "concise_rationale": "Validated excursion evidence and cited hold procedure support dispatcher review.",
+  "cited_evidence_chunk_ids": ["sopch_example"],
+  "cited_incident_evidence_ids": ["00000000-0000-4000-8000-000000000001"],
+  "contraindications": [],
+  "missing_information": ["independent probe reading"],
+  "evidence_sufficient": true,
+  "uncertainty_level": "MEDIUM",
+  "recommendation_expiry": "2026-09-19T18:30:00Z",
+  "schema_version": "1.0"
+}

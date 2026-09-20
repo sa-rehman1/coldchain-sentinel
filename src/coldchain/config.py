@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,6 +28,55 @@ class Settings(BaseSettings):
     kafka_consumer_group: str = "coldchain-telemetry-worker-v1"
     kafka_security_protocol: Literal["PLAINTEXT", "SSL", "SASL_SSL"] = "PLAINTEXT"
     governance_kill_switch_active: bool = False
+    llm_provider: str = Field(
+        default="groq", validation_alias=AliasChoices("LLM_PROVIDER", "COLDCHAIN_LLM_PROVIDER")
+    )
+    llm_base_url: str = Field(
+        default="https://api.groq.com/openai/v1",
+        validation_alias=AliasChoices("LLM_BASE_URL", "COLDCHAIN_LLM_BASE_URL"),
+    )
+    llm_api_key_env: str = Field(
+        default="GROQ_API_KEY",
+        validation_alias=AliasChoices("LLM_API_KEY_ENV", "COLDCHAIN_LLM_API_KEY_ENV"),
+    )
+    llm_model: str = Field(
+        default="openai/gpt-oss-20b",
+        validation_alias=AliasChoices("LLM_MODEL", "COLDCHAIN_LLM_MODEL"),
+    )
+    llm_timeout_seconds: float = Field(
+        default=15.0,
+        gt=0,
+        le=60,
+        validation_alias=AliasChoices("LLM_TIMEOUT_SECONDS", "COLDCHAIN_LLM_TIMEOUT_SECONDS"),
+    )
+    llm_max_output_tokens: int = Field(
+        default=1200,
+        ge=64,
+        le=2000,
+        validation_alias=AliasChoices("LLM_MAX_OUTPUT_TOKENS", "COLDCHAIN_LLM_MAX_OUTPUT_TOKENS"),
+    )
+    llm_temperature: float = Field(
+        default=0.0,
+        ge=0,
+        le=1,
+        validation_alias=AliasChoices("LLM_TEMPERATURE", "COLDCHAIN_LLM_TEMPERATURE"),
+    )
+    llm_reasoning_effort: Literal["low", "medium", "high"] | None = Field(
+        default="low",
+        validation_alias=AliasChoices("LLM_REASONING_EFFORT", "COLDCHAIN_LLM_REASONING_EFFORT"),
+    )
+    llm_live_calls_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("LLM_LIVE_CALLS_ENABLED", "COLDCHAIN_LLM_LIVE_CALLS_ENABLED"),
+    )
+    llm_billing_mode: str = Field(
+        default="free_tier",
+        validation_alias=AliasChoices("LLM_BILLING_MODE", "COLDCHAIN_LLM_BILLING_MODE"),
+    )
+    qdrant_url: str = "http://localhost:6333"
+    qdrant_collection: str = "coldchain_sop_v1"
+    embedding_provider: str = "deterministic"
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     @field_validator(
         "service_name",
