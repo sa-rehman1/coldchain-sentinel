@@ -77,12 +77,20 @@ class Settings(BaseSettings):
     qdrant_collection: str = "coldchain_sop_v1"
     embedding_provider: str = "deterministic"
     embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    metrics_enabled: bool = True
+    worker_metrics_host: str = "127.0.0.1"
+    worker_metrics_port: int = Field(default=9100, ge=1024, le=65535)
+    otel_tracing_enabled: bool = False
+    otel_exporter_otlp_endpoint: str = "http://localhost:4318/v1/traces"
+    otel_export_timeout_seconds: float = Field(default=2.0, gt=0, le=10)
 
     @field_validator(
         "service_name",
         "kafka_telemetry_topic",
         "kafka_dead_letter_topic",
         "kafka_consumer_group",
+        "worker_metrics_host",
+        "otel_exporter_otlp_endpoint",
     )
     @classmethod
     def reject_blank_values(cls, value: str) -> str:

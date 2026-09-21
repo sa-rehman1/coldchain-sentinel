@@ -7,6 +7,7 @@ from typing import Any, Protocol
 from aiokafka import AIOKafkaProducer
 
 from coldchain.contracts.models import TelemetryEvent
+from coldchain.observability.tracing import inject_kafka_headers, span
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,8 +79,16 @@ class KafkaTelemetryPublisher:
         payload = json.dumps(
             event.model_dump(mode="json", by_alias=True), separators=(",", ":")
         ).encode()
-        await self._producer.send_and_wait(
-            self._config.telemetry_topic,
-            value=payload,
-            key=str(event.shipment_id).encode(),
-        )
+        with span(
+            "kafka.publish",
+            attributes={
+                "messaging.destination.name": self._config.telemetry_topic,
+                "messaging.operation.name": "publish",
+            },
+        ):
+            await self._producer.send_and_wait(
+                self._config.telemetry_topic,
+                value=payload,
+                key=str(event.shipment_id).encode(),
+                headers=inject_kafka_headers(),
+            )

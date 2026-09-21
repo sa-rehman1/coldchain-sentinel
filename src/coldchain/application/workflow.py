@@ -29,6 +29,8 @@ from coldchain.domain import (
 from coldchain.domain.governance import ActionRequest, GovernanceDecision, GovernancePolicy
 from coldchain.domain.incidents import utc_now
 from coldchain.governance.engine import DeterministicGovernanceEngine
+from coldchain.observability.metrics import bounded, metrics
+from coldchain.observability.tracing import span
 
 
 class AuthorizationError(PermissionError):
@@ -66,27 +68,29 @@ class TemperatureBreachWorkflow:
             sequence=event.reading_sequence,
             temperature_celsius=event.temperature_celsius,
         )
-        if event.cargo_type != "FRESH_PERISHABLES":
-            evaluation = self._policy.fail_closed(
-                {
-                    "cargoType": event.cargo_type,
-                    "temperatureCelsius": event.temperature_celsius,
-                    "readingSequence": event.reading_sequence,
-                },
-                "UNSUPPORTED_CARGO_POLICY",
-            )
-        else:
-            try:
-                evaluation = self._policy.evaluate(reading, history, evaluated_at)
-            except (ValueError, ArithmeticError):
+        with span("policy.evaluate", attributes={"coldchain.component": "policy"}):
+            if event.cargo_type != "FRESH_PERISHABLES":
                 evaluation = self._policy.fail_closed(
-                    {"eventId": str(event.event_id)}, "POLICY_EVALUATION_ERROR"
+                    {
+                        "cargoType": event.cargo_type,
+                        "temperatureCelsius": event.temperature_celsius,
+                        "readingSequence": event.reading_sequence,
+                    },
+                    "UNSUPPORTED_CARGO_POLICY",
                 )
+            else:
+                try:
+                    evaluation = self._policy.evaluate(reading, history, evaluated_at)
+                except (ValueError, ArithmeticError):
+                    evaluation = self._policy.fail_closed(
+                        {"eventId": str(event.event_id)}, "POLICY_EVALUATION_ERROR"
+                    )
 
         if evaluation.disposition is not BreachDisposition.BREACH:
-            return await self._repository.persist_telemetry_result(
-                event, evaluation, None, None, None, None
-            )
+            with span("persistence.telemetry", attributes={"coldchain.outcome": "no_breach"}):
+                return await self._repository.persist_telemetry_result(
+                    event, evaluation, None, None, None, None
+                )
 
         incident = Incident(
             incident_id=uuid4(),
@@ -98,6 +102,10 @@ class TemperatureBreachWorkflow:
             correlation_id=event.correlation_id,
             created_at=evaluated_at,
         )
+        metrics.incidents_created.labels(
+            breach_type="temperature",
+            severity=bounded(incident.severity, {"LOW", "MEDIUM", "HIGH", "CRITICAL"}),
+        ).inc()
         evidence_payload = {
             "eventId": str(event.event_id),
             "policyVersion": evaluation.policy_version,
@@ -119,17 +127,26 @@ class TemperatureBreachWorkflow:
             incident,
             state=transition(incident.state, IncidentState.EVIDENCE_COLLECTED),
         )
-        recommendation = self._provider.recommend(incident, evidence)
-        governance = self._evaluate_governance(incident, evidence, recommendation, evaluated_at)
+        with span("recommendation.generate", attributes={"coldchain.component": "recommendation"}):
+            recommendation = self._provider.recommend(incident, evidence)
+        with span("governance.evaluate", attributes={"coldchain.component": "governance"}):
+            governance = self._evaluate_governance(incident, evidence, recommendation, evaluated_at)
         target_state = (
             IncidentState.AWAITING_APPROVAL
             if governance.decision == GovernanceDecision.APPROVAL_REQUIRED.value
             else IncidentState.FAILED
         )
         incident = replace(incident, state=transition(incident.state, target_state))
-        return await self._repository.persist_telemetry_result(
-            event, evaluation, incident, evidence, recommendation, governance
-        )
+        metrics.incidents_current.labels(state=target_state.value.lower()).inc()
+        metrics.governance_decisions.labels(
+            decision=bounded(governance.decision, {"ALLOWED", "APPROVAL_REQUIRED", "PROHIBITED"})
+        ).inc()
+        if governance.decision == GovernanceDecision.PROHIBITED.value:
+            metrics.governance_fail_closed.labels(reason="prohibited").inc()
+        with span("persistence.incident", attributes={"coldchain.outcome": "created"}):
+            return await self._repository.persist_telemetry_result(
+                event, evaluation, incident, evidence, recommendation, governance
+            )
 
     def _evaluate_governance(
         self,
@@ -148,6 +165,7 @@ class TemperatureBreachWorkflow:
         ):
             reason_codes = ("MISSING_EVIDENCE",)
         elif recommendation.expires_at <= now:
+            metrics.recommendations_expired.inc()
             reason_codes = ("RECOMMENDATION_EXPIRED",)
         elif not recommendation.non_authoritative:
             reason_codes = ("AUTHORITATIVE_RECOMMENDATION_REJECTED",)
@@ -170,6 +188,8 @@ class TemperatureBreachWorkflow:
             )
             decision = result.decision
             reason_codes = (decision.value,)
+            if self._kill_switch_active:
+                metrics.kill_switch_blocks.inc()
         return GovernanceEvaluation(
             evaluation_id=uuid4(),
             incident_id=incident.incident_id,
@@ -217,20 +237,33 @@ class ApprovalService:
         idempotency_key: str,
         correlation_id: UUID,
     ) -> dict[str, object]:
-        if "dispatcher" not in identity.roles:
-            raise AuthorizationError("dispatcher role is required")
-        command, response = await self._repository.decide(
-            incident_id,
-            recommendation_id,
-            identity,
-            decision,
-            rationale,
-            idempotency_key,
-            correlation_id,
-        )
+        with span("approval.decide", attributes={"coldchain.component": "governance"}):
+            if "dispatcher" not in identity.roles:
+                metrics.approval_decisions.labels(decision="unauthorized").inc()
+                raise AuthorizationError("dispatcher role is required")
+            command, response = await self._repository.decide(
+                incident_id,
+                recommendation_id,
+                identity,
+                decision,
+                rationale,
+                idempotency_key,
+                correlation_id,
+            )
+            metrics.approval_decisions.labels(decision=decision.value.lower()).inc()
+            metrics.incidents_current.labels(state="awaiting_approval").dec()
+            metrics.incidents_current.labels(state=decision.value.lower()).inc()
         if command is not None:
-            result = await self._adapter.execute(command)
-            durable_result = await self._repository.complete_command(command, result)
+            action = bounded(command.action_type, {"HOLD_SHIPMENT", "ADD_NOTE"})
+            metrics.commands_created.labels(action=action).inc()
+            with span("command.execute", attributes={"coldchain.action": command.action_type}):
+                result = await self._adapter.execute(command)
+            metrics.simulated_actions.labels(outcome=result.status.lower()).inc()
+            with span(
+                "persistence.command",
+                attributes={"coldchain.outcome": result.status.lower()},
+            ):
+                durable_result = await self._repository.complete_command(command, result)
             response = {
                 **response,
                 "commandId": str(command.command_id),

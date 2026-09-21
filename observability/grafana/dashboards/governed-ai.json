@@ -1,0 +1,25 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "links": [{"title": "Jaeger traces", "url": "http://localhost:16687", "targetBlank": true}],
+  "panels": [
+    {"id": 1, "title": "Recommendation validation", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "targets": [{"expr": "sum by (provider, validation_result) (rate(coldchain_recommendations_total[5m]))", "legendFormat": "{{provider}} {{validation_result}}"}]},
+    {"id": 2, "title": "Fallback reasons", "type": "timeseries", "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "targets": [{"expr": "sum by (reason) (rate(coldchain_recommendation_fallback_total[5m]))", "legendFormat": "{{reason}}"}]},
+    {"id": 3, "title": "Retrieval p95 latency", "type": "timeseries", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8}, "targets": [{"expr": "histogram_quantile(0.95, sum by (le, outcome) (rate(coldchain_retrieval_duration_seconds_bucket[5m])))", "legendFormat": "{{outcome}}"}]},
+    {"id": 4, "title": "Retrieved chunks", "type": "timeseries", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8}, "targets": [{"expr": "rate(coldchain_retrieval_chunks_returned_sum[5m]) / clamp_min(rate(coldchain_retrieval_chunks_returned_count[5m]), 0.001)"}]},
+    {"id": 5, "title": "Provider p95 latency", "type": "timeseries", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8}, "targets": [{"expr": "histogram_quantile(0.95, sum by (le, provider, model) (rate(coldchain_provider_duration_seconds_bucket[5m])))", "legendFormat": "{{provider}} {{model}}"}]},
+    {"id": 6, "title": "Governance decisions", "type": "bargauge", "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16}, "targets": [{"expr": "sum by (decision) (increase(coldchain_governance_decisions_total[1h]))", "legendFormat": "{{decision}}"}]},
+    {"id": 7, "title": "Fail-closed and kill-switch blocks", "type": "timeseries", "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16}, "targets": [{"expr": "sum(rate(coldchain_governance_fail_closed_total[5m]))", "legendFormat": "fail closed"}, {"expr": "sum(rate(coldchain_kill_switch_blocks_total[5m]))", "legendFormat": "kill switch"}]},
+    {"id": 8, "title": "Approval decisions", "type": "timeseries", "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16}, "targets": [{"expr": "sum by (decision) (rate(coldchain_approval_decisions_total[5m]))", "legendFormat": "{{decision}}"}]}
+  ],
+  "refresh": "10s",
+  "schemaVersion": 41,
+  "tags": ["coldchain", "governed-ai", "local-demo"],
+  "templating": {"list": []},
+  "time": {"from": "now-1h", "to": "now"},
+  "timezone": "browser",
+  "title": "Governed AI",
+  "uid": "coldchain-governed-ai",
+  "version": 1
+}

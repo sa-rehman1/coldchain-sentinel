@@ -1,6 +1,7 @@
 """Provider-neutral recommendation orchestration and offline fallback."""
 
 import os
+import time
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
@@ -13,6 +14,8 @@ from coldchain.ai.provider import (
 from coldchain.config import Settings
 from coldchain.domain import EvidenceSnapshot, Incident, Recommendation
 from coldchain.domain.incidents import utc_now
+from coldchain.observability.metrics import bounded, metrics
+from coldchain.observability.tracing import span
 from coldchain.retrieval.core import (
     DeterministicEmbeddingProvider,
     EmbeddingProvider,
@@ -30,6 +33,9 @@ class DeterministicLocalRecommendationProvider:
 
     def recommend(self, incident: Incident, evidence: EvidenceSnapshot) -> Recommendation:
         now = utc_now()
+        metrics.recommendations.labels(
+            provider="deterministic", model=self.version, validation_result="deterministic"
+        ).inc()
         return Recommendation(
             recommendation_id=uuid4(),
             incident_id=incident.incident_id,
@@ -81,24 +87,50 @@ class RetrievalGroundedRecommendationProvider:
             return self._fallback_result(incident, evidence, "live_call_limit_reached")
         self._attempted_incidents.add(incident_key)
         try:
+            retrieval_started = time.perf_counter()
             query = f"{incident.severity} temperature excursion {evidence.summary}"
-            vector = self._embeddings.embed([query])[0]
-            matches = self._store.search(
-                vector, as_of=incident.created_at.date(), top_k=5, threshold=0.05
+            with span("retrieval.search", attributes={"coldchain.component": "retrieval"}):
+                vector = self._embeddings.embed([query])[0]
+                matches = self._store.search(
+                    vector, as_of=incident.created_at.date(), top_k=5, threshold=0.05
+                )
+            retrieval_outcome = "success" if matches else "insufficient_evidence"
+            metrics.retrieval_duration.labels(outcome=retrieval_outcome).observe(
+                time.perf_counter() - retrieval_started
             )
+            metrics.retrieval_chunks.observe(len(matches))
+            metrics.retrieval_outcomes.labels(outcome=retrieval_outcome).inc()
             if not matches:
                 raise ProviderFailure("insufficient_retrieval_evidence")
             chunks = [item[0] for item in matches]
             context = self._context(chunks)
-            output, provenance = self._provider.request(
-                incident_facts=self._incident_facts(incident, evidence),
-                deterministic_result="HOLD_SHIPMENT requires dispatcher approval",
-                retrieved_context=context,
-                allowed_chunk_ids={chunk.chunk_id for chunk in chunks},
-                allowed_incident_evidence_ids={str(evidence.evidence_id)},
-                correlation_id=str(incident.correlation_id),
-                sop_corpus_version=self._corpus_version,
-            )
+            provider_started = time.perf_counter()
+            with span(
+                "provider.request",
+                attributes={
+                    "coldchain.provider": self._provider.config.provider,
+                    "coldchain.model": self._provider.config.model,
+                },
+            ):
+                output, provenance = self._provider.request(
+                    incident_facts=self._incident_facts(incident, evidence),
+                    deterministic_result="HOLD_SHIPMENT requires dispatcher approval",
+                    retrieved_context=context,
+                    allowed_chunk_ids={chunk.chunk_id for chunk in chunks},
+                    allowed_incident_evidence_ids={str(evidence.evidence_id)},
+                    correlation_id=str(incident.correlation_id),
+                    sop_corpus_version=self._corpus_version,
+                )
+            metrics.provider_duration.labels(
+                provider=self._provider.config.provider,
+                model=self._provider.config.model,
+                outcome="success",
+            ).observe(time.perf_counter() - provider_started)
+            metrics.recommendations.labels(
+                provider=self._provider.config.provider,
+                model=self._provider.config.model,
+                validation_result="valid",
+            ).inc()
             cited = [chunk for chunk in chunks if chunk.chunk_id in output.cited_evidence_chunk_ids]
             provenance_data = provenance.model_dump(mode="json")
             provenance_data["cited_document_ids"] = sorted({item.document_id for item in cited})
@@ -128,6 +160,19 @@ class RetrievalGroundedRecommendationProvider:
         recommendation = self._fallback.recommend(incident, evidence)
         provenance: dict[str, Any] = dict(recommendation.provenance or {})
         provenance.update({"fallbackUsed": True, "fallbackReason": reason})
+        metrics.recommendation_fallback.labels(
+            reason=bounded(
+                reason,
+                {
+                    "live_call_limit_reached",
+                    "insufficient_retrieval_evidence",
+                    "retrieval_or_validation_failure",
+                    "json_validate_failed",
+                    "live_calls_disabled",
+                    "provider_failure",
+                },
+            )
+        ).inc()
         return Recommendation(
             recommendation_id=recommendation.recommendation_id,
             incident_id=recommendation.incident_id,

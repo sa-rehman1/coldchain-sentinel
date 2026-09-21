@@ -52,7 +52,14 @@ class FakeKafkaProducer:
     async def stop(self) -> None:
         self.started = False
 
-    async def send_and_wait(self, topic: str, *, value: bytes, key: bytes) -> None:
+    async def send_and_wait(
+        self,
+        topic: str,
+        *,
+        value: bytes,
+        key: bytes,
+        headers: list[tuple[str, bytes]] | None = None,
+    ) -> None:
         self.messages.append((topic, key, value))
 
 

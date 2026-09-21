@@ -4,11 +4,14 @@ import asyncio
 import base64
 import hashlib
 import logging
+import time
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, uuid4, uuid5
 
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from aiokafka.structs import OffsetAndMetadata, TopicPartition
+from prometheus_client import start_http_server
 from pydantic import ValidationError
 
 from coldchain.application.recommendations import build_recommendation_provider
@@ -23,6 +26,13 @@ from coldchain.infrastructure.kafka import (
 )
 from coldchain.infrastructure.repositories import SqlWorkflowRepository
 from coldchain.observability.logging import configure_logging
+from coldchain.observability.metrics import metrics
+from coldchain.observability.tracing import (
+    configure_tracing,
+    extract_kafka_context,
+    inject_kafka_headers,
+    span,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +72,11 @@ class TelemetryWorker:
                 for partition, messages in batches.items():
                     for message in messages:
                         await self.process_message(
-                            message.value, partition, message.offset, datetime.now(UTC)
+                            message.value,
+                            partition,
+                            message.offset,
+                            datetime.now(UTC),
+                            message.headers,
                         )
                         await self._consumer.commit(
                             {partition: OffsetAndMetadata(message.offset + 1, "")}
@@ -77,32 +91,81 @@ class TelemetryWorker:
         partition: TopicPartition,
         offset: int,
         received_at: datetime,
+        headers: Sequence[tuple[str, bytes]] | None = None,
     ) -> None:
-        try:
-            event = TelemetryEvent.model_validate_json(value)
-        except (ValidationError, ValueError):
-            await self._publish_failure(value, partition, offset, received_at)
-            logger.warning(
-                "invalid_telemetry_sent_to_dlq",
+        started = time.perf_counter()
+        outcome = "processed"
+        metrics.worker_events.labels(outcome="received").inc()
+        context = extract_kafka_context(headers)
+        with span(
+            "kafka.consume",
+            context=context,
+            attributes={
+                "messaging.destination.name": partition.topic,
+                "messaging.operation.name": "process",
+            },
+        ):
+            try:
+                event = TelemetryEvent.model_validate_json(value)
+            except (ValidationError, ValueError):
+                outcome = "validation_failure"
+                await self._publish_failure(value, partition, offset, received_at)
+                metrics.worker_events.labels(outcome=outcome).inc()
+                metrics.worker_events.labels(outcome="dlq").inc()
+                metrics.structured_errors.labels(
+                    component="worker", error_type="contract_validation"
+                ).inc()
+                logger.warning(
+                    "invalid_telemetry_sent_to_dlq",
+                    extra={
+                        "component": "worker",
+                        "eventName": "telemetry_validation_failed",
+                        "partition": partition.partition,
+                        "offset": offset,
+                        "outcome": "dlq",
+                        "errorType": "contract_validation",
+                    },
+                )
+                metrics.worker_duration.labels(outcome=outcome).observe(
+                    time.perf_counter() - started
+                )
+                return
+            try:
+                result = await self._workflow.process(event, received_at)
+            except Exception:
+                outcome = "retryable_failure"
+                metrics.worker_events.labels(outcome=outcome).inc()
+                metrics.structured_errors.labels(
+                    component="worker", error_type="workflow_failure"
+                ).inc()
+                metrics.worker_duration.labels(outcome=outcome).observe(
+                    time.perf_counter() - started
+                )
+                logger.exception(
+                    "telemetry_processing_failed",
+                    extra={
+                        "component": "worker",
+                        "eventName": "telemetry_processing_failed",
+                        "partition": partition.partition,
+                        "offset": offset,
+                        "outcome": outcome,
+                        "errorType": "workflow_failure",
+                    },
+                )
+                raise
+            outcome = "duplicate" if result.duplicate else "processed"
+            metrics.worker_events.labels(outcome=outcome).inc()
+            logger.info(
+                "telemetry_processed",
                 extra={
-                    "topic": partition.topic,
+                    "component": "worker",
+                    "eventName": "telemetry_processed",
                     "partition": partition.partition,
                     "offset": offset,
-                    "reasonCode": "CONTRACT_VALIDATION_FAILED",
+                    "outcome": outcome,
                 },
             )
-            return
-        result = await self._workflow.process(event, received_at)
-        logger.info(
-            "telemetry_processed",
-            extra={
-                "eventId": str(event.event_id),
-                "shipmentId": str(event.shipment_id),
-                "duplicate": result.duplicate,
-                "disposition": result.disposition,
-                "incidentId": str(result.incident_id) if result.incident_id else None,
-            },
-        )
+        metrics.worker_duration.labels(outcome=outcome).observe(time.perf_counter() - started)
 
     async def _publish_failure(
         self,
@@ -129,6 +192,7 @@ class TelemetryWorker:
             self._config.dead_letter_topic,
             key=envelope.event_id.hex.encode(),
             value=envelope.model_dump_json(by_alias=True).encode(),
+            headers=inject_kafka_headers(),
         )
 
 
@@ -136,7 +200,21 @@ async def run_worker() -> None:
     settings = get_settings()
     if settings.database_url is None:
         raise RuntimeError("worker database URL is required")
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, "coldchain-telemetry-worker")
+    tracer_provider = configure_tracing(
+        "coldchain-telemetry-worker",
+        enabled=settings.otel_tracing_enabled,
+        endpoint=settings.otel_exporter_otlp_endpoint,
+        timeout_seconds=settings.otel_export_timeout_seconds,
+    )
+    if settings.metrics_enabled:
+        try:
+            start_http_server(settings.worker_metrics_port, addr=settings.worker_metrics_host)
+        except OSError:
+            logger.exception(
+                "worker_metrics_server_failed",
+                extra={"component": "worker", "eventName": "metrics_server_failed"},
+            )
     database = Database(
         settings.database_url.get_secret_value(), settings.database_connect_timeout_seconds
     )
@@ -150,6 +228,8 @@ async def run_worker() -> None:
         await TelemetryWorker(get_kafka_config(), workflow).run()
     finally:
         await database.dispose()
+        if tracer_provider is not None:
+            tracer_provider.shutdown()
 
 
 def main() -> None:

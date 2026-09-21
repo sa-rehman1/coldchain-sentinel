@@ -1,0 +1,28 @@
+groups:
+  - name: coldchain-demo-alerts
+    rules:
+      - alert: ColdChainDeadLetterActivity
+        expr: increase(coldchain_worker_events_total{outcome="dlq"}[5m]) > 0
+        for: 0m
+        labels: {severity: warning}
+        annotations: {summary: "Telemetry entered the dead-letter queue"}
+      - alert: ColdChainHighFallbackRate
+        expr: sum(rate(coldchain_recommendation_fallback_total[10m])) / clamp_min(sum(rate(coldchain_recommendations_total[10m])), 0.001) > 0.25
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "Recommendation fallback rate exceeds 25 percent"}
+      - alert: ColdChainGovernanceFailClosed
+        expr: increase(coldchain_governance_fail_closed_total[5m]) > 0
+        for: 0m
+        labels: {severity: critical}
+        annotations: {summary: "Governance rejected an unsafe or unverifiable action"}
+      - alert: ColdChainWorkerFailure
+        expr: increase(coldchain_worker_events_total{outcome=~"retryable_failure|validation_failure"}[5m]) > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "Telemetry worker failures detected"}
+      - alert: ColdChainApiErrorRate
+        expr: sum(rate(coldchain_api_requests_total{status_class="5xx"}[5m])) / clamp_min(sum(rate(coldchain_api_requests_total[5m])), 0.001) > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "API 5xx rate exceeds five percent"}

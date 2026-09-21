@@ -50,7 +50,14 @@ class FakeProducer:
     async def stop(self) -> None:
         self.started = False
 
-    async def send_and_wait(self, topic: str, *, key: bytes, value: bytes) -> None:
+    async def send_and_wait(
+        self,
+        topic: str,
+        *,
+        key: bytes,
+        value: bytes,
+        headers: list[tuple[str, bytes]] | None = None,
+    ) -> None:
         self.messages.append((topic, key, value))
 
 
@@ -76,7 +83,7 @@ class FakeConsumer:
         if self.calls > 1:
             raise StopWorker
         partition = TopicPartition("coldchain.telemetry.v1", 0)
-        return {partition: [SimpleNamespace(value=self.payload, offset=4)]}
+        return {partition: [SimpleNamespace(value=self.payload, offset=4, headers=[])]}
 
     async def commit(self, offsets: dict[Any, Any]) -> None:
         self.commits.append(offsets)

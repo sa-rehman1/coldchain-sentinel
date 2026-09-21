@@ -20,7 +20,7 @@ RUN uv sync --frozen --no-dev
 RUN addgroup --system coldchain && adduser --system --ingroup coldchain coldchain
 USER coldchain
 
-EXPOSE 8000
+EXPOSE 8000 9100
 CMD ["uvicorn", "coldchain.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM runtime AS test
@@ -28,6 +28,8 @@ USER root
 COPY tests ./tests
 COPY contracts ./contracts
 COPY scripts ./scripts
+COPY evaluations ./evaluations
+COPY observability ./observability
 RUN uv sync --frozen --all-groups
 RUN chown -R coldchain:coldchain /app
 USER coldchain
