@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+.vite/
+.cache/
+.npm-cache/
+*.tsbuildinfo
+*.local
+*.log
+vite.config.*.timestamp-*
