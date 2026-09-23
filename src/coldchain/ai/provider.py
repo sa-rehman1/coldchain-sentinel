@@ -96,6 +96,7 @@ class ProviderConfig:
     reasoning_effort: Literal["low", "medium", "high"] | None
     live_calls_enabled: bool
     billing_mode: str
+    max_retries: int = 1
 
 
 class OpenAICompatibleRecommendationProvider:
@@ -125,7 +126,7 @@ class OpenAICompatibleRecommendationProvider:
 
     @property
     def configured(self) -> bool:
-        return bool(self._key.get_secret_value())
+        return bool(self._key.get_secret_value() and self.config.model.strip())
 
     def __repr__(self) -> str:
         return (
@@ -147,7 +148,12 @@ class OpenAICompatibleRecommendationProvider:
         if not self.config.live_calls_enabled:
             raise ProviderFailure("live_calls_disabled")
         if not self.configured:
-            raise ProviderFailure("api_key_not_configured")
+            reason = (
+                "api_key_not_configured"
+                if not self._key.get_secret_value()
+                else "provider_model_not_configured"
+            )
+            raise ProviderFailure(reason)
         if self._opened_at is not None and time.monotonic() - self._opened_at < self._cooldown:
             raise ProviderFailure("provider_circuit_open")
 
@@ -184,9 +190,9 @@ class OpenAICompatibleRecommendationProvider:
             decision = ProviderRecommendationDecision.model_validate_json(
                 body["choices"][0]["message"]["content"]
             )
-        except (ValueError, KeyError, IndexError, TypeError, ValidationError) as exc:
+        except (ValueError, KeyError, IndexError, TypeError, ValidationError):
             self._record_failure()
-            raise ProviderFailure("invalid_provider_response") from exc
+            raise ProviderFailure("invalid_provider_response") from None
         if not set(decision.cited_evidence_chunk_ids) <= allowed_chunk_ids:
             raise ProviderFailure("unknown_sop_citation")
         if not set(decision.cited_incident_evidence_ids) <= allowed_incident_evidence_ids:
@@ -221,10 +227,12 @@ class OpenAICompatibleRecommendationProvider:
             output_tokens=usage.get("completion_tokens"),
             total_tokens=usage.get("total_tokens"),
             billing_mode=self.config.billing_mode,
-            cost_estimation_basis="configured_free_tier_mode"
-            if self.config.billing_mode == "free_tier"
-            else "configured_mode",
-            estimated_cost=0.0,
+            cost_estimation_basis=(
+                "configured_free_tier_mode"
+                if self.config.billing_mode == "free_tier"
+                else "not_estimated"
+            ),
+            estimated_cost=0.0 if self.config.billing_mode == "free_tier" else None,
             retry_count=retries,
             fallback_used=False,
             validation_result="valid",
@@ -242,11 +250,13 @@ class OpenAICompatibleRecommendationProvider:
             "Authorization": f"Bearer {self._key.get_secret_value()}",
             "X-Correlation-ID": correlation_id,
         }
-        for attempt in range(2):
+        if self.config.max_retries not in {0, 1}:
+            raise ProviderFailure("invalid_retry_configuration")
+        for attempt in range(self.config.max_retries + 1):
             try:
                 response = self._client.post(url, headers=headers, json=payload)
             except (httpx.TimeoutException, httpx.NetworkError) as exc:
-                if attempt == 0:
+                if attempt < self.config.max_retries:
                     continue
                 self._record_failure()
                 raise ProviderFailure("provider_network_failure") from exc
@@ -255,7 +265,7 @@ class OpenAICompatibleRecommendationProvider:
             if response.status_code == 403:
                 raise self._response_failure(response, "provider_permission_failure")
             if response.status_code == 429 or response.status_code >= 500:
-                if attempt == 0:
+                if attempt < self.config.max_retries:
                     retry_after = response.headers.get("Retry-After")
                     if retry_after:
                         try:

@@ -229,6 +229,8 @@ def build_recommendation_provider(
     """Build without connecting; retrieval precedes the disabled provider's local fallback."""
 
     fallback = DeterministicLocalRecommendationProvider()
+    if settings.llm_provider == "deterministic":
+        return fallback
     embeddings = DeterministicEmbeddingProvider()
     store = QdrantVectorStore(
         settings.qdrant_url,
@@ -238,15 +240,15 @@ def build_recommendation_provider(
     provider = OpenAICompatibleRecommendationProvider(
         ProviderConfig(
             provider=settings.llm_provider,
-            base_url=settings.llm_base_url,
-            api_key_env=settings.llm_api_key_env,
-            model=settings.llm_model,
+            base_url=settings.selected_llm_base_url,
+            api_key_env=settings.selected_llm_api_key_env,
+            model=settings.selected_llm_model,
             timeout_seconds=settings.llm_timeout_seconds,
             max_output_tokens=settings.llm_max_output_tokens,
             temperature=settings.llm_temperature,
-            reasoning_effort=settings.llm_reasoning_effort,
+            reasoning_effort=settings.selected_llm_reasoning_effort,
             live_calls_enabled=settings.llm_live_calls_enabled,
-            billing_mode=settings.llm_billing_mode,
+            billing_mode=settings.selected_llm_billing_mode,
         )
     )
     return RetrievalGroundedRecommendationProvider(provider, store, embeddings, fallback)

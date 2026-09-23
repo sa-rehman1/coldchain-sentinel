@@ -22,6 +22,8 @@ import {
   timelineSchema,
 } from './schemas';
 
+const providerLabel = (provider: string): string => ({ openai: 'OpenAI', groq: 'Groq', deterministic: 'Deterministic' })[provider] ?? provider;
+
 const scenarioVariant = (id: string): Scenario['variant'] => {
   if (id === 'critical' || id === 'sustained') return 'critical';
   if (id === 'stale') return 'stale';
@@ -93,7 +95,7 @@ export class HttpControlTowerDataSource implements ControlTowerDataSource {
       this.client.request('/health/live', liveHealthSchema, { signal }),
       this.client.request('/health/ai', aiHealthSchema, { signal }),
     ]);
-    return { api: live.status === 'alive' ? 'healthy' : 'offline', ai: ai.fallback_available ? 'healthy' : 'degraded', provider: ai.selected_provider, providerConfigured: ai.provider_configured, liveCallsEnabled: ai.live_calls_enabled, fallbackAvailable: ai.fallback_available, qdrant: ai.qdrant_readiness };
+    return { api: live.status === 'alive' ? 'healthy' : 'offline', ai: ai.fallback_available ? 'healthy' : 'degraded', provider: providerLabel(ai.selected_provider), model: ai.selected_model, providerConfigured: ai.provider_configured, liveCallsEnabled: ai.live_calls_enabled, fallbackAvailable: ai.fallback_available, qdrant: ai.qdrant_readiness };
   }
 
   async decide(id: string, recommendationId: string, decision: 'approve' | 'reject', rationale: string, idempotencyKey: string, identity: LocalIdentity): Promise<DecisionResult> {

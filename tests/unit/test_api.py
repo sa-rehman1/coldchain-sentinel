@@ -79,7 +79,7 @@ async def test_readiness_passes_with_healthy_probe() -> None:
 
 
 async def test_ai_health_is_safe_and_does_not_require_a_key() -> None:
-    app = create_app(Settings(environment="test", database_url=None))
+    app = create_app(Settings(environment="test", database_url=None, llm_provider="deterministic"))
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://test"
     ) as client:
@@ -87,7 +87,9 @@ async def test_ai_health_is_safe_and_does_not_require_a_key() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["selected_provider"] == "groq"
+    assert payload["selected_provider"] == "deterministic"
+    assert payload["selected_model"] == "deterministic-local-1.0"
+    assert payload["provider_configured"] is True
     assert payload["live_calls_enabled"] is False
     assert payload["fallback_available"] is True
     assert "api_key" not in str(payload).lower()

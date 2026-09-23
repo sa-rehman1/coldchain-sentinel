@@ -179,6 +179,7 @@ export interface PlatformHealth {
   api: ServiceState;
   ai: ServiceState;
   provider: string;
+  model: string;
   providerConfigured: boolean;
   liveCallsEnabled: boolean;
   fallbackAvailable: boolean;

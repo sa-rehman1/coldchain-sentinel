@@ -73,4 +73,15 @@ describe('authoritative API boundary', () => {
     await expect(new HttpControlTowerDataSource().getIncidents()).rejects.toMatchObject({ code: 'network_unavailable' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it('maps OpenAI health metadata without exposing credentials', async () => {
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.endsWith('/health/live')) return Promise.resolve(jsonResponse({ status: 'alive' }));
+      return Promise.resolve(jsonResponse({ selected_provider: 'openai', selected_model: 'configured-model-id', provider_configured: true, live_calls_enabled: false, qdrant_readiness: 'ready', embedding_provider_readiness: 'ready', fallback_available: true }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(new HttpControlTowerDataSource().getHealth()).resolves.toMatchObject({ provider: 'OpenAI', model: 'configured-model-id', providerConfigured: true, liveCallsEnabled: false, fallbackAvailable: true });
+    expect(JSON.stringify(fetchMock.mock.calls)).not.toContain('api_key');
+  });
 });

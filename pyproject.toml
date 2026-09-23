@@ -77,6 +77,7 @@ markers = [
   "integration: requires an explicitly configured external service",
   "e2e: requires an explicitly configured running Docker stack",
   "live_groq: explicit one-call Groq smoke test",
+  "live_openai: explicit one-call OpenAI smoke test",
 ]
 
 [tool.coverage.run]

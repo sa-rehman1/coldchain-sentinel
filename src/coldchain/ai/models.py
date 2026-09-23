@@ -129,7 +129,7 @@ class RecommendationProvenance(BaseModel):
     total_tokens: int | None = Field(default=None, ge=0)
     billing_mode: str
     cost_estimation_basis: str
-    estimated_cost: float = Field(ge=0)
+    estimated_cost: float | None = Field(default=None, ge=0)
     retry_count: int = Field(ge=0, le=1)
     fallback_used: bool
     fallback_reason: str | None = None

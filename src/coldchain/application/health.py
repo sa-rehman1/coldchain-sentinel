@@ -37,6 +37,7 @@ class ReadinessService:
 @dataclass(frozen=True, slots=True)
 class AiHealthResult:
     selected_provider: str
+    selected_model: str
     provider_configured: bool
     live_calls_enabled: bool
     qdrant_readiness: str
@@ -62,7 +63,15 @@ class AiHealthService:
                 qdrant = "unavailable"
         return AiHealthResult(
             selected_provider=self._settings.llm_provider,
-            provider_configured=bool(os.getenv(self._settings.llm_api_key_env, "")),
+            selected_model=self._settings.selected_llm_model,
+            provider_configured=(
+                True
+                if self._settings.llm_provider == "deterministic"
+                else bool(
+                    os.getenv(self._settings.selected_llm_api_key_env, "")
+                    and self._settings.selected_llm_model
+                )
+            ),
             live_calls_enabled=self._settings.llm_live_calls_enabled,
             qdrant_readiness=qdrant,
             embedding_provider_readiness=(

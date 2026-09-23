@@ -29,6 +29,7 @@ class AiHealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     selected_provider: str
+    selected_model: str
     provider_configured: bool
     live_calls_enabled: bool
     qdrant_readiness: str

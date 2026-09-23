@@ -29,8 +29,9 @@ class Settings(BaseSettings):
     kafka_security_protocol: Literal["PLAINTEXT", "SSL", "SASL_SSL"] = "PLAINTEXT"
     governance_kill_switch_active: bool = False
     demo_mode_enabled: bool = False
-    llm_provider: str = Field(
-        default="groq", validation_alias=AliasChoices("LLM_PROVIDER", "COLDCHAIN_LLM_PROVIDER")
+    llm_provider: Literal["deterministic", "groq", "openai"] = Field(
+        default="deterministic",
+        validation_alias=AliasChoices("LLM_PROVIDER", "COLDCHAIN_LLM_PROVIDER"),
     )
     llm_base_url: str = Field(
         default="https://api.groq.com/openai/v1",
@@ -74,6 +75,14 @@ class Settings(BaseSettings):
         default="free_tier",
         validation_alias=AliasChoices("LLM_BILLING_MODE", "COLDCHAIN_LLM_BILLING_MODE"),
     )
+    openai_base_url: str = Field(
+        default="https://api.openai.com/v1",
+        validation_alias=AliasChoices("OPENAI_BASE_URL", "COLDCHAIN_OPENAI_BASE_URL"),
+    )
+    openai_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("OPENAI_MODEL", "COLDCHAIN_OPENAI_MODEL"),
+    )
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "coldchain_sop_v1"
     embedding_provider: str = "deterministic"
@@ -101,6 +110,11 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_non_local_security(self) -> "Settings":
+        if (
+            self.llm_provider == "openai"
+            and self.openai_base_url.rstrip("/") != "https://api.openai.com/v1"
+        ):
+            raise ValueError("OpenAI credentials may be sent only to the official API base URL")
         if self.demo_mode_enabled and self.environment not in {"local", "test"}:
             raise ValueError("demo mode is available only in local/test environments")
         if self.environment in {"staging", "production"}:
@@ -112,6 +126,42 @@ class Settings(BaseSettings):
             if self.kafka_security_protocol == "PLAINTEXT":
                 raise ValueError("Kafka encryption is required outside local/test")
         return self
+
+    @property
+    def selected_llm_base_url(self) -> str:
+        if self.llm_provider == "openai":
+            return self.openai_base_url
+        return self.llm_base_url
+
+    @property
+    def selected_llm_api_key_env(self) -> str:
+        if self.llm_provider == "openai":
+            return "OPENAI_API_KEY"
+        if self.llm_provider == "groq":
+            return self.llm_api_key_env
+        return ""
+
+    @property
+    def selected_llm_model(self) -> str:
+        if self.llm_provider == "openai":
+            return self.openai_model.strip()
+        if self.llm_provider == "groq":
+            return self.llm_model
+        return "deterministic-local-1.0"
+
+    @property
+    def selected_llm_reasoning_effort(self) -> Literal["low", "medium", "high"] | None:
+        # Model support varies. The OpenAI request omits this optional field unless a
+        # later, model-specific adapter verifies support.
+        if self.llm_provider == "openai":
+            return None
+        return self.llm_reasoning_effort
+
+    @property
+    def selected_llm_billing_mode(self) -> str:
+        if self.llm_provider == "openai":
+            return "provider_billed"
+        return self.llm_billing_mode
 
 
 @lru_cache

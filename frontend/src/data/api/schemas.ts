@@ -19,7 +19,7 @@ export const scenarioSchema = object({ scenarioId: z.string(), title: z.string()
 export const scenariosSchema = z.array(scenarioSchema);
 export const demoRunSchema = object({ runId: uuid, scenarioId: z.string(), correlationId: uuid, shipmentId: uuid, eventIds: z.array(uuid), publishCount: z.number().int(), startedAt: z.string().optional(), status: z.enum(['ACCEPTED', 'PROCESSING', 'INCIDENT_READY', 'COMPLETED_WITHOUT_INCIDENT']), processedEventCount: z.number().int().default(0), dispositions: z.array(z.string()).default([]), incident: incidentSchema.nullable().optional(), steps: object({ telemetrySubmitted: z.boolean(), eventAccepted: z.boolean(), policyEvaluated: z.boolean(), evidenceCollected: z.boolean(), recommendationCreated: z.boolean(), governanceCompleted: z.boolean(), incidentReady: z.boolean() }).default({ telemetrySubmitted: true, eventAccepted: true, policyEvaluated: false, evidenceCollected: false, recommendationCreated: false, governanceCompleted: false, incidentReady: false }) });
 export const liveHealthSchema = object({ status: z.literal('alive') });
-export const aiHealthSchema = object({ selected_provider: z.string(), provider_configured: z.boolean(), live_calls_enabled: z.boolean(), qdrant_readiness: z.string(), embedding_provider_readiness: z.string(), fallback_available: z.boolean() });
+export const aiHealthSchema = object({ selected_provider: z.string(), selected_model: z.string(), provider_configured: z.boolean(), live_calls_enabled: z.boolean(), qdrant_readiness: z.string(), embedding_provider_readiness: z.string(), fallback_available: z.boolean() });
 
 export type ApiIncident = z.infer<typeof incidentSchema>;
 export type ApiTimeline = z.infer<typeof timelineSchema>;
