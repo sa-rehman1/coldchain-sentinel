@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: ${COLDCHAIN_POSTGRES_PASSWORD:?set COLDCHAIN_POSTGRES_PASSWORD}
       POSTGRES_DB: ${COLDCHAIN_POSTGRES_DB:?set COLDCHAIN_POSTGRES_DB}
     ports:
-      - "${COLDCHAIN_POSTGRES_HOST_PORT:-5432}:5432"
+      - "127.0.0.1:${COLDCHAIN_POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -35,7 +35,7 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
       CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
     ports:
-      - "${COLDCHAIN_KAFKA_HOST_PORT:-9092}:9092"
+      - "127.0.0.1:${COLDCHAIN_KAFKA_HOST_PORT:-9092}:9092"
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
@@ -87,6 +87,18 @@ services:
         condition: service_healthy
     networks: [coldchain-internal]
 
+  sop-ingest:
+    image: coldchain-sentinel:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["python", "scripts/ingest_sop.py", "--qdrant-url", "http://qdrant:6333", "--collection", "coldchain_sop_v1"]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    networks: [coldchain-internal]
+
   api:
     image: coldchain-sentinel:local
     build:
@@ -100,11 +112,12 @@ services:
       COLDCHAIN_KAFKA_TELEMETRY_TOPIC: coldchain.telemetry.v1
       COLDCHAIN_KAFKA_DEAD_LETTER_TOPIC: coldchain.telemetry.dlq.v1
       COLDCHAIN_QDRANT_URL: http://qdrant:6333
+      COLDCHAIN_DEMO_MODE_ENABLED: ${COLDCHAIN_DEMO_MODE_ENABLED:-true}
       COLDCHAIN_OTEL_TRACING_ENABLED: ${COLDCHAIN_OTEL_TRACING_ENABLED:-false}
       COLDCHAIN_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
       LLM_LIVE_CALLS_ENABLED: ${LLM_LIVE_CALLS_ENABLED:-false}
     ports:
-      - "${COLDCHAIN_API_HOST_PORT:-8000}:8000"
+      - "127.0.0.1:${COLDCHAIN_API_HOST_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,6 +125,8 @@ services:
         condition: service_completed_successfully
       qdrant:
         condition: service_healthy
+      sop-ingest:
+        condition: service_completed_successfully
       migrate:
         condition: service_completed_successfully
     healthcheck:
@@ -150,7 +165,29 @@ services:
         condition: service_completed_successfully
       qdrant:
         condition: service_healthy
+      sop-ingest:
+        condition: service_completed_successfully
     restart: unless-stopped
+    networks: [coldchain-internal]
+
+  frontend:
+    profiles: ["demo"]
+    image: coldchain-sentinel-frontend:local
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_CONTROL_TOWER_DATA_SOURCE: ${VITE_CONTROL_TOWER_DATA_SOURCE:-api}
+    ports:
+      - "127.0.0.1:${COLDCHAIN_FRONTEND_HOST_PORT:-4173}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/ >/dev/null"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
     networks: [coldchain-internal]
 
   prometheus:

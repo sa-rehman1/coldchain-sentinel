@@ -107,9 +107,11 @@ async def test_http_errors_use_public_error_envelope() -> None:
 class FakePublisher:
     def __init__(self) -> None:
         self.event: TelemetryEvent | None = None
+        self.events: list[TelemetryEvent] = []
 
     async def publish(self, event: TelemetryEvent) -> None:
         self.event = event
+        self.events.append(event)
 
 
 class ApiRepository:
@@ -118,6 +120,15 @@ class ApiRepository:
         self.recommendation_id = uuid4()
         self.command_id = uuid4()
         self.decisions: dict[str, tuple[tuple[object, ...], UUID]] = {}
+
+    async def demo_run_status(
+        self, correlation_id: UUID, event_ids: tuple[UUID, ...]
+    ) -> dict[str, object]:
+        return {
+            "processedEventCount": len(event_ids),
+            "dispositions": ["ACCEPTED" for _ in event_ids],
+            "incident": None,
+        }
 
     async def recent_readings(
         self, shipment_id: UUID, limit: int
@@ -344,3 +355,64 @@ async def test_workflow_dependencies_fail_closed_when_unconfigured() -> None:
             headers={"X-Actor-ID": "dispatcher-1", "X-Actor-Roles": "dispatcher"},
         )
     assert incidents.status_code == submitted.status_code == approval.status_code == 503
+
+
+async def test_demo_api_lists_scenarios_and_publishes_only_telemetry() -> None:
+    repository = ApiRepository()
+    publisher = FakePublisher()
+    app = create_app(
+        Settings(environment="test", database_url=None, demo_mode_enabled=True),
+        repository,
+        publisher,
+    )
+    headers = {"X-Actor-ID": "dispatcher:demo", "X-Actor-Roles": "dispatcher"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        scenarios = await client.get("/api/v1/demo/scenarios", headers=headers)
+        first = await client.post("/api/v1/demo/scenarios/sustained", headers=headers)
+        second = await client.post("/api/v1/demo/scenarios/sustained", headers=headers)
+        duplicate = await client.post("/api/v1/demo/scenarios/duplicate", headers=headers)
+        run = await client.get(f"/api/v1/demo/runs/{first.json()['runId']}", headers=headers)
+
+    assert scenarios.status_code == 200
+    assert {item["scenarioId"] for item in scenarios.json()} >= {
+        "healthy",
+        "critical",
+        "sustained",
+        "stale",
+        "duplicate",
+        "fallback",
+    }
+    assert first.status_code == second.status_code == duplicate.status_code == 202
+    assert first.json()["eventIds"] != second.json()["eventIds"]
+    assert first.json()["correlationId"] != second.json()["correlationId"]
+    assert duplicate.json()["publishCount"] == 2
+    assert len(set(duplicate.json()["eventIds"])) == 1
+    assert run.status_code == 200
+    assert run.json()["status"] == "COMPLETED_WITHOUT_INCIDENT"
+    assert all(event.producer.startswith("coldchain-local-demo:") for event in publisher.events)
+
+
+async def test_demo_api_is_disabled_and_role_enforced() -> None:
+    repository = ApiRepository()
+    publisher = FakePublisher()
+    disabled = create_app(Settings(environment="test", database_url=None), repository, publisher)
+    enabled = create_app(
+        Settings(environment="test", database_url=None, demo_mode_enabled=True),
+        repository,
+        publisher,
+    )
+    auditor = {"X-Actor-ID": "auditor:demo", "X-Actor-Roles": "auditor"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=disabled), base_url="http://test"
+    ) as client:
+        hidden = await client.get("/api/v1/demo/scenarios", headers=auditor)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=enabled), base_url="http://test"
+    ) as client:
+        forbidden = await client.post("/api/v1/demo/scenarios/healthy", headers=auditor)
+
+    assert hidden.status_code == 404
+    assert forbidden.status_code == 403
+    assert publisher.events == []

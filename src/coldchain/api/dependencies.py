@@ -5,6 +5,7 @@ from typing import cast
 from fastapi import Request
 
 from coldchain.api.errors import ServiceUnavailableError
+from coldchain.application.demo import DemoScenarioService
 from coldchain.application.health import AiHealthService, ReadinessService
 from coldchain.application.interfaces import TelemetryPublisher, WorkflowRepository
 from coldchain.application.workflow import ApprovalService
@@ -37,3 +38,15 @@ def get_telemetry_publisher(request: Request) -> TelemetryPublisher:
     if publisher is None:
         raise ServiceUnavailableError("telemetry publisher is unavailable")
     return cast(TelemetryPublisher, publisher)
+
+
+def get_demo_service(request: Request) -> DemoScenarioService:
+    settings = request.app.state.settings
+    if settings.environment not in {"local", "test"} or not settings.demo_mode_enabled:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="local demo API is disabled")
+    service = getattr(request.app.state, "demo_service", None)
+    if service is None:
+        raise ServiceUnavailableError("local demo service is unavailable")
+    return cast(DemoScenarioService, service)

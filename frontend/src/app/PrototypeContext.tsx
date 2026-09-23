@@ -1,8 +1,15 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import type { AuditEvent, Incident } from '../data/contracts';
+import type { AuditEvent, Incident, LocalIdentity } from '../data/contracts';
 
-export type Persona = 'Quality reviewer' | 'Operations lead' | 'Read-only auditor';
+export type Persona = LocalIdentity['label'];
+// eslint-disable-next-line react-refresh/only-export-components -- identities and provider share the local-demo boundary.
+export const localIdentities: Record<Persona, LocalIdentity> = {
+  Dispatcher: { label: 'Dispatcher', actorId: 'dispatcher:local-demo', roles: ['dispatcher'] },
+  'Senior Reviewer': { label: 'Senior Reviewer', actorId: 'senior-reviewer:local-demo', roles: ['dispatcher'] },
+  Administrator: { label: 'Administrator', actorId: 'administrator:local-demo', roles: ['administrator', 'dispatcher'] },
+  'Read-only Auditor': { label: 'Read-only Auditor', actorId: 'auditor:local-demo', roles: ['auditor'] },
+};
 type DisplayMode = 'default' | 'empty' | 'disconnected' | 'permission-denied';
 export type DecisionVariant = 'success' | 'conflict' | 'expiry' | 'authorization-failure' | 'uncertain-timeout';
 export type NotificationSeverity = 'critical' | 'warning' | 'informational';
@@ -39,6 +46,7 @@ interface PrototypeState {
   toast: string | null;
   notify: (message: string) => void;
   notifications: PrototypeNotification[];
+  readNotificationIds: ReadonlySet<string>;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
 }
@@ -46,7 +54,7 @@ interface PrototypeState {
 const PrototypeContext = createContext<PrototypeState | null>(null);
 const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } });
 
-export function PrototypeProvider({ children, initialPersona = 'Quality reviewer', initialDisplayMode = 'default' }: { children: ReactNode; initialPersona?: Persona; initialDisplayMode?: DisplayMode }) {
+export function PrototypeProvider({ children, initialPersona = 'Dispatcher', initialDisplayMode = 'default' }: { children: ReactNode; initialPersona?: Persona; initialDisplayMode?: DisplayMode }) {
   const [persona, setPersona] = useState<Persona>(initialPersona);
   const [displayMode, setDisplayMode] = useState<DisplayMode>(initialDisplayMode);
   const [decisionVariant, setDecisionVariant] = useState<DecisionVariant>('success');
@@ -54,6 +62,7 @@ export function PrototypeProvider({ children, initialPersona = 'Quality reviewer
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<PrototypeNotification[]>(createNotifications);
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
 
   const notify = (message: string) => {
     setToast(message);
@@ -65,10 +74,10 @@ export function PrototypeProvider({ children, initialPersona = 'Quality reviewer
     addSimulatedIncident: (incident) => setSimulatedIncidents((items) => [incident, ...items]),
     auditEvents, addAuditEvent: (event) => setAuditEvents((items) => [...items, event]),
     restore: () => { setSimulatedIncidents([]); setAuditEvents([]); setDisplayMode('default'); setDecisionVariant('success'); setNotifications(createNotifications()); notify('Prototype fixtures restored'); },
-    toast, notify, notifications,
-    markNotificationRead: (id) => setNotifications((items) => items.map((item) => item.id === id ? { ...item, read: true } : item)),
-    markAllNotificationsRead: () => setNotifications((items) => items.map((item) => ({ ...item, read: true }))),
-  }), [persona, displayMode, decisionVariant, simulatedIncidents, auditEvents, toast, notifications]);
+    toast, notify, notifications, readNotificationIds,
+    markNotificationRead: (id) => { setReadNotificationIds((ids) => new Set(ids).add(id)); setNotifications((items) => items.map((item) => item.id === id ? { ...item, read: true } : item)); },
+    markAllNotificationsRead: () => { setReadNotificationIds((ids) => new Set([...ids, ...notifications.map((item) => item.id)])); setNotifications((items) => items.map((item) => ({ ...item, read: true }))); },
+  }), [persona, displayMode, decisionVariant, simulatedIncidents, auditEvents, toast, notifications, readNotificationIds]);
 
   return <QueryClientProvider client={queryClient}><PrototypeContext.Provider value={value}>{children}</PrototypeContext.Provider></QueryClientProvider>;
 }

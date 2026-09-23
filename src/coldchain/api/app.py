@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import cast
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -17,10 +18,12 @@ from coldchain.api.errors import (
     workflow_conflict_handler,
 )
 from coldchain.api.middleware import CorrelationIdMiddleware
+from coldchain.api.routes.demo import router as demo_router
 from coldchain.api.routes.health import router as health_router
 from coldchain.api.routes.incidents import router as incidents_router
 from coldchain.api.routes.metrics import router as metrics_router
 from coldchain.application.actions import SimulatedColdChainActionAdapter
+from coldchain.application.demo import DemoRunReader, DemoScenarioService
 from coldchain.application.health import AiHealthService, ReadinessService
 from coldchain.application.interfaces import (
     ActionAdapter,
@@ -116,6 +119,11 @@ def create_app(
     app.state.workflow_repository = repository
     app.state.telemetry_publisher = publisher
     app.state.approval_service = ApprovalService(repository, adapter) if repository else None
+    app.state.demo_service = (
+        DemoScenarioService(publisher, cast(DemoRunReader, repository))
+        if publisher is not None and repository is not None
+        else None
+    )
     app.add_middleware(CorrelationIdMiddleware)
     app.add_exception_handler(ServiceUnavailableError, service_unavailable_handler)  # type: ignore[arg-type]
     app.add_exception_handler(AuthorizationError, authorization_error_handler)  # type: ignore[arg-type]
@@ -125,6 +133,7 @@ def create_app(
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
     app.include_router(health_router, prefix=API_PREFIX)
     app.include_router(incidents_router, prefix=API_PREFIX)
+    app.include_router(demo_router, prefix=API_PREFIX)
     app.include_router(metrics_router)
     return app
 

@@ -9,19 +9,23 @@ export interface Incident {
   severity: Severity;
   title: string;
   shipment: string;
-  product: string;
-  sensor: string;
-  temperature: number;
-  allowedMin: number;
-  allowedMax: number;
-  breachMinutes: number;
+  product: string | null;
+  sensor: string | null;
+  temperature: number | null;
+  allowedMin: number | null;
+  allowedMax: number | null;
+  breachMinutes: number | null;
   state: WorkflowState;
   governance: GovernanceDecision;
   createdMinutesAgo: number;
   reviewer: string | null;
-  route: { from: string; via: string; to: string; progress: number };
-  productSensitivity: string;
-  sensorHealth: string;
+  route: { from: string; via: string; to: string; progress: number } | null;
+  productSensitivity: string | null;
+  sensorHealth: string | null;
+  recommendationId?: string;
+  recommendedAction?: Action;
+  recommendationExpiresAt?: string;
+  correlationId?: string;
   stale?: boolean;
   duplicate?: boolean;
   breachKind?: 'sustained' | 'immediate' | 'none';
@@ -32,7 +36,7 @@ export interface LiveTelemetryRow {
   route: string;
   product: string;
   temperature: number;
-  allowedMin: number;
+  allowedMin: number | null;
   allowedMax: number;
   state: Severity;
   lastReading: string;
@@ -53,7 +57,7 @@ export interface EvidenceChunk {
   section: string;
   version: string;
   effectiveDate: string;
-  score: number;
+  score: number | null;
   excerpt: string;
   trusted: boolean;
 }
@@ -63,8 +67,8 @@ export interface Recommendation {
   rationale: string;
   evidenceSufficient: boolean;
   uncertainty: 'low' | 'medium' | 'high';
-  missingInformation: string[];
-  contraindications: string[];
+  missingInformation: string[] | null;
+  contraindications: string[] | null;
   evidenceIds: string[];
   incidentEvidenceIds: string[];
   fallback: boolean;
@@ -72,10 +76,10 @@ export interface Recommendation {
   model: string;
   promptVersion: string;
   schemaVersion: string;
-  latencyMs: number;
-  tokens: number;
-  estimatedCost: string;
-  expiresInMinutes: number;
+  latencyMs: number | null;
+  tokens: number | null;
+  estimatedCost: string | null;
+  expiresInMinutes: number | null;
   validation: 'valid' | 'expired' | 'invalid';
 }
 
@@ -115,10 +119,13 @@ export interface Scenario {
 }
 
 export interface DashboardData {
+  mode: 'mock' | 'api';
   incidents: Incident[];
   services: ServiceHealth[];
   trend: Array<{ hour: string; incidents: number; breaches: number; awaitingReview: number }>;
   recommendations: Array<{ time: string; incident: string; action: Action; outcome: string }>;
+  liveTelemetry: LiveTelemetryRow[];
+  generatedAt: string;
 }
 
 export interface InvestigationData {
@@ -128,11 +135,64 @@ export interface InvestigationData {
   recommendation: Recommendation;
   governanceChecks: GovernanceCheck[];
   audit: AuditEvent[];
+  decision?: DecisionResult;
+}
+
+export interface LocalIdentity {
+  label: 'Dispatcher' | 'Senior Reviewer' | 'Administrator' | 'Read-only Auditor';
+  actorId: string;
+  roles: string[];
+}
+
+export interface DecisionResult {
+  approvalId: string;
+  decision: 'APPROVED' | 'REJECTED';
+  idempotentReplay: boolean;
+  commandId: string | null;
+  status: string | null;
+  actionResult: { resultId: string; status: string; adapter: string; detail: string; completedAt: string } | null;
+}
+
+export interface DemoRun {
+  runId: string;
+  scenarioId: string;
+  correlationId: string;
+  shipmentId: string;
+  eventIds: string[];
+  publishCount: number;
+  status: 'ACCEPTED' | 'PROCESSING' | 'INCIDENT_READY' | 'COMPLETED_WITHOUT_INCIDENT';
+  processedEventCount: number;
+  dispositions: string[];
+  incidentId: string | null;
+  steps: {
+    telemetrySubmitted: boolean;
+    eventAccepted: boolean;
+    policyEvaluated: boolean;
+    evidenceCollected: boolean;
+    recommendationCreated: boolean;
+    governanceCompleted: boolean;
+    incidentReady: boolean;
+  };
+}
+
+export interface PlatformHealth {
+  api: ServiceState;
+  ai: ServiceState;
+  provider: string;
+  providerConfigured: boolean;
+  liveCallsEnabled: boolean;
+  fallbackAvailable: boolean;
+  qdrant: string;
 }
 
 export interface ControlTowerDataSource {
-  getDashboard(): Promise<DashboardData>;
-  getIncidents(): Promise<Incident[]>;
-  getInvestigation(id: string): Promise<InvestigationData>;
-  getScenarios(): Promise<Scenario[]>;
+  readonly mode: 'mock' | 'api';
+  getDashboard(signal?: AbortSignal): Promise<DashboardData>;
+  getIncidents(signal?: AbortSignal): Promise<Incident[]>;
+  getInvestigation(id: string, signal?: AbortSignal): Promise<InvestigationData>;
+  getScenarios(identity?: LocalIdentity, signal?: AbortSignal): Promise<Scenario[]>;
+  getHealth(signal?: AbortSignal): Promise<PlatformHealth>;
+  decide(id: string, recommendationId: string, decision: 'approve' | 'reject', rationale: string, idempotencyKey: string, identity: LocalIdentity): Promise<DecisionResult>;
+  startScenario(id: string, identity: LocalIdentity): Promise<DemoRun>;
+  getDemoRun(runId: string, identity: LocalIdentity, signal?: AbortSignal): Promise<DemoRun>;
 }

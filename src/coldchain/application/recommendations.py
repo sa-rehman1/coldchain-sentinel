@@ -1,10 +1,11 @@
 """Provider-neutral recommendation orchestration and offline fallback."""
 
-import os
 import time
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
+
+import httpx
 
 from coldchain.ai.provider import (
     OpenAICompatibleRecommendationProvider,
@@ -86,6 +87,7 @@ class RetrievalGroundedRecommendationProvider:
         if incident_key in self._attempted_incidents:
             return self._fallback_result(incident, evidence, "live_call_limit_reached")
         self._attempted_incidents.add(incident_key)
+        chunks: list[SopChunk] = []
         try:
             retrieval_started = time.perf_counter()
             query = f"{incident.severity} temperature excursion {evidence.summary}"
@@ -148,18 +150,35 @@ class RetrievalGroundedRecommendationProvider:
                 non_authoritative=True,
                 provenance=provenance_data,
             )
-        except (ProviderFailure, ValueError, RuntimeError) as exc:
+        except (ProviderFailure, ValueError, RuntimeError, httpx.HTTPError) as exc:
             reason = (
                 str(exc) if isinstance(exc, ProviderFailure) else "retrieval_or_validation_failure"
             )
-            return self._fallback_result(incident, evidence, reason)
+            return self._fallback_result(incident, evidence, reason, chunks)
 
     def _fallback_result(
-        self, incident: Incident, evidence: EvidenceSnapshot, reason: str
+        self,
+        incident: Incident,
+        evidence: EvidenceSnapshot,
+        reason: str,
+        chunks: list[SopChunk] | None = None,
     ) -> Recommendation:
         recommendation = self._fallback.recommend(incident, evidence)
         provenance: dict[str, Any] = dict(recommendation.provenance or {})
-        provenance.update({"fallbackUsed": True, "fallbackReason": reason})
+        retrieved = chunks or []
+        provenance.update(
+            {
+                "fallbackUsed": True,
+                "fallbackReason": reason,
+                "retrievedChunkIds": [item.chunk_id for item in retrieved],
+                "citedChunkIds": [item.chunk_id for item in retrieved],
+                "citedDocumentIds": sorted({item.document_id for item in retrieved}),
+                "citedSectionIds": sorted({item.section_id for item in retrieved}),
+                "sopCorpusVersion": self._corpus_version,
+                "evidenceSufficient": bool(retrieved),
+                "uncertaintyLevel": "low" if retrieved else "medium",
+            }
+        )
         metrics.recommendation_fallback.labels(
             reason=bounded(
                 reason,
@@ -207,11 +226,9 @@ class RetrievalGroundedRecommendationProvider:
 def build_recommendation_provider(
     settings: Settings,
 ) -> DeterministicLocalRecommendationProvider | RetrievalGroundedRecommendationProvider:
-    """Build without network activity; disabled or unconfigured always means local fallback."""
+    """Build without connecting; retrieval precedes the disabled provider's local fallback."""
 
     fallback = DeterministicLocalRecommendationProvider()
-    if not settings.llm_live_calls_enabled or not os.getenv(settings.llm_api_key_env, ""):
-        return fallback
     embeddings = DeterministicEmbeddingProvider()
     store = QdrantVectorStore(
         settings.qdrant_url,

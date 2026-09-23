@@ -67,6 +67,10 @@ async def test_repository_duplicate_audit_approval_and_command_idempotency() -> 
         assert incident is not None
         recommendation_id = incident["recommendationId"]
         assert isinstance(recommendation_id, str)
+        assert incident["telemetry"]
+        assert incident["evidence"]
+        assert incident["recommendation"]
+        assert incident["governance"]
         timeline = await repository.timeline(first.incident_id)
         sequences = [int(str(item["sequence"])) for item in timeline]
         assert sequences == sorted(sequences)
@@ -142,6 +146,11 @@ async def test_repository_duplicate_audit_approval_and_command_idempotency() -> 
         command_id = UUID(str(approved["commandId"]))
         command = await repository.command_status(command_id)
         assert command is not None and command["status"] == "SUCCEEDED"
+        assert command["actionResult"] == approved["actionResult"]
+        completed = await repository.get_incident(first.incident_id)
+        assert completed is not None
+        assert completed["approval"]
+        assert completed["command"]
         assert len(await repository.timeline(first.incident_id)) == 8
     finally:
         await database.dispose()

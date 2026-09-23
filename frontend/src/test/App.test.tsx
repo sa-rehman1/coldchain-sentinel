@@ -12,7 +12,7 @@ import { MockControlTowerDataSource } from '../data/adapters/MockControlTowerDat
 import { dashboard, incidents, scenarios } from '../data/fixtures';
 import { deriveIncidentSummary } from '../data/selectors/incidents';
 
-function renderApp(route = '/', persona: Persona = 'Quality reviewer', initialDisplayMode: 'default' | 'empty' | 'disconnected' | 'permission-denied' = 'default') {
+function renderApp(route = '/', persona: Persona = 'Dispatcher', initialDisplayMode: 'default' | 'empty' | 'disconnected' | 'permission-denied' = 'default') {
   return render(<MemoryRouter initialEntries={[route]}><PrototypeProvider initialPersona={persona} initialDisplayMode={initialDisplayMode}><App /></PrototypeProvider></MemoryRouter>);
 }
 
@@ -20,7 +20,7 @@ describe('control tower prototype', () => {
   it('renders the application shell and command center', async () => {
     const { container } = renderApp();
     expect(screen.getByText('ColdChain Sentinel')).toBeInTheDocument();
-    expect(screen.getByText('Local demo')).toBeInTheDocument();
+    expect(screen.getByText('Local demo · Mock')).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Cold-chain operations', level: 1 })).toBeInTheDocument();
     expect(container.querySelector('.light-shell')).toBeInTheDocument();
   });
@@ -157,6 +157,7 @@ describe('control tower prototype', () => {
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText('Confirm shipment hold')).toBeInTheDocument();
     expect(within(dialog).getByText(/idempotent simulated command/i)).toBeInTheDocument();
+    await user.type(within(dialog).getByPlaceholderText(/concise operational rationale/i), 'Reviewed sensor evidence and SOP guidance');
     await user.click(within(dialog).getByRole('button', { name: 'Confirm prototype decision' }));
     expect(await screen.findByText('Approved for simulated execution')).toBeInTheDocument();
   });
@@ -172,7 +173,7 @@ describe('control tower prototype', () => {
   });
 
   it('hides decision authority from the read-only persona', async () => {
-    renderApp('/investigation/INC-2481', 'Read-only auditor');
+    renderApp('/investigation/INC-2481', 'Read-only Auditor');
     await screen.findByText('Approval required');
     expect(screen.getByRole('button', { name: 'Approve hold' })).toBeDisabled();
     expect(screen.getByText(/cannot make operational decisions/i)).toBeInTheDocument();
@@ -323,6 +324,7 @@ describe('control tower prototype', () => {
     const globalSearch = screen.getByRole('textbox', { name: 'Global incident search' });
     await user.type(globalSearch, 'INC-2481{Enter}');
     await user.click(await screen.findByRole('button', { name: 'Approve hold' }));
+    await user.type(screen.getByPlaceholderText(/concise operational rationale/i), 'Reviewed evidence and prior command state');
     await user.click(screen.getByRole('button', { name: 'Confirm prototype decision' }));
     expect((await screen.findAllByText(/idempotent command already exists/i)).length).toBeGreaterThan(0);
   });
@@ -344,7 +346,7 @@ describe('control tower prototype', () => {
   });
 
   it('renders the disconnected state without contacting a network', async () => {
-    renderApp('/incidents', 'Quality reviewer', 'disconnected');
+    renderApp('/incidents', 'Dispatcher', 'disconnected');
     expect(await screen.findByText('Data source disconnected')).toBeInTheDocument();
   });
 });

@@ -20,6 +20,12 @@ const tabs = ['Overview', 'Services', 'Traces & Alerts'] as const;
 export function Observability() {
   const { data } = useDashboard();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>('Overview');
+  if (data?.mode === 'api') return <div className="page observability-page observability-polished">
+    <div className="page-intro compact"><div><p>Reliability posture</p><h1>Observability</h1><span>Authoritative health with safe local service links</span></div><div className="live-indicator"><span />API health · refreshed automatically</div></div>
+    <Panel title="Service health" eyebrow="Local API checks"><ServiceHealthTable services={data.services} /></Panel>
+    <div className="summary-strip primary-metrics"><Metric label="Request rate" value="Unavailable" detail="Open Prometheus for time series" /><Metric label="P95 latency" value="Unavailable" detail="Not exposed by the operational API" /><Metric label="Kafka throughput" value="Unavailable" detail="No fixture substituted" /><Metric label="Open incidents" value={String(data.incidents.filter((item) => item.state !== 'completed').length)} detail="Derived from incident records" /></div>
+    <Panel title="Local observability tools" eyebrow="No incident payloads are transmitted"><div className="tool-links">{[['Jaeger','http://localhost:16687'],['Prometheus','http://localhost:19090'],['Grafana','http://localhost:13001']].map(([label,url]) => <Button key={label} variant="secondary" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>{label}<ExternalLink size={13} /></Button>)}</div></Panel>
+  </div>;
   return <div className="page observability-page observability-polished">
     <div className="page-intro compact"><div><p>Reliability posture</p><h1>Observability</h1><span>Local metrics, traces and alerts with safe telemetry boundaries</span></div><div className="live-indicator"><span />Prototype snapshot · refresh paused</div></div>
     <div className="internal-tabs" role="tablist" aria-label="Observability views">{tabs.map((tab) => <button role="tab" aria-selected={activeTab === tab} key={tab} onClick={() => setActiveTab(tab)}>{tab}</button>)}</div>

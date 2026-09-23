@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     kafka_consumer_group: str = "coldchain-telemetry-worker-v1"
     kafka_security_protocol: Literal["PLAINTEXT", "SSL", "SASL_SSL"] = "PLAINTEXT"
     governance_kill_switch_active: bool = False
+    demo_mode_enabled: bool = False
     llm_provider: str = Field(
         default="groq", validation_alias=AliasChoices("LLM_PROVIDER", "COLDCHAIN_LLM_PROVIDER")
     )
@@ -100,6 +101,8 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_non_local_security(self) -> "Settings":
+        if self.demo_mode_enabled and self.environment not in {"local", "test"}:
+            raise ValueError("demo mode is available only in local/test environments")
         if self.environment in {"staging", "production"}:
             if self.database_url is None:
                 raise ValueError("database URL is required outside local/test environments")

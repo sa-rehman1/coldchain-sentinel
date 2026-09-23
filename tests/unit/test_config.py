@@ -18,6 +18,11 @@ def test_production_requires_database_url() -> None:
         )
 
 
+def test_demo_mode_fails_closed_outside_local_and_test() -> None:
+    with pytest.raises(ValueError, match="demo mode"):
+        Settings(environment="staging", demo_mode_enabled=True)
+
+
 def test_production_requires_verified_database_tls() -> None:
     with pytest.raises(ValidationError, match="sslmode=verify-full"):
         Settings(

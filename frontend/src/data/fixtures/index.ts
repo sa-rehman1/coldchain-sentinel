@@ -55,7 +55,10 @@ export const audit: AuditEvent[] = [
 ].map(([id, offsetMinutes, actor, type, summary], index) => ({ id: String(id), offsetMinutes: Number(offsetMinutes), actor: String(actor), type: String(type), summary: String(summary), correlationId: 'corr-7b42a1', traceId: `6d8f22a17b3c4e${index}` }));
 
 export const dashboard: DashboardData = {
+  mode: 'mock',
   incidents,
+  liveTelemetry,
+  generatedAt: new Date(0).toISOString(),
   services: [
     { name: 'API', state: 'healthy', latency: '42 ms', detail: 'Ready · 0.2% errors' },
     { name: 'Worker', state: 'healthy', latency: '18 ms', detail: '3 consumers active' },

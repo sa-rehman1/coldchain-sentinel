@@ -225,23 +225,36 @@ class SqlWorkflowRepository(WorkflowRepository):
                     select(IncidentRecord).order_by(IncidentRecord.created_at.desc())
                 )
             ).all()
-            return [self._incident_dict(row) for row in rows]
+            return [await self._incident_view(session, row) for row in rows]
 
     async def get_incident(self, incident_id: UUID) -> dict[str, object] | None:
         async with self._database.transaction() as session:
             row = await session.get(IncidentRecord, incident_id)
             if row is None:
                 return None
-            result = self._incident_dict(row)
-            recommendation = await session.scalar(
-                select(RecommendationRecord).where(RecommendationRecord.incident_id == incident_id)
+            return await self._incident_view(session, row)
+
+    async def demo_run_status(
+        self, correlation_id: UUID, event_ids: tuple[UUID, ...]
+    ) -> dict[str, object]:
+        async with self._database.transaction() as session:
+            telemetry = (
+                await session.scalars(
+                    select(TelemetryRecord)
+                    .where(TelemetryRecord.event_id.in_(event_ids))
+                    .order_by(TelemetryRecord.reading_sequence)
+                )
+            ).all()
+            incident = await session.scalar(
+                select(IncidentRecord)
+                .where(IncidentRecord.correlation_id == correlation_id)
+                .order_by(IncidentRecord.created_at.desc())
             )
-            if recommendation is not None:
-                result["recommendationId"] = str(recommendation.recommendation_id)
-                result["recommendedAction"] = recommendation.action_type
-                result["recommendationExpiresAt"] = recommendation.expires_at.isoformat()
-                result["recommendationProvenance"] = recommendation.provenance
-            return result
+            return {
+                "processedEventCount": len(telemetry),
+                "dispositions": [row.disposition for row in telemetry],
+                "incident": await self._incident_view(session, incident) if incident else None,
+            }
 
     async def timeline(self, incident_id: UUID) -> list[dict[str, object]]:
         async with self._database.transaction() as session:
@@ -472,6 +485,17 @@ class SqlWorkflowRepository(WorkflowRepository):
                 "status": result.status if result else command.status,
                 "adapter": result.adapter if result else None,
                 "detail": result.detail if result else None,
+                "actionResult": (
+                    {
+                        "resultId": str(result.result_id),
+                        "status": result.status,
+                        "adapter": result.adapter,
+                        "detail": result.detail,
+                        "completedAt": result.completed_at.astimezone(UTC).isoformat(),
+                    }
+                    if result
+                    else None
+                ),
             }
 
     async def _append_audit(
@@ -539,6 +563,136 @@ class SqlWorkflowRepository(WorkflowRepository):
             "createdAt": row.created_at.astimezone(UTC).isoformat(),
             "updatedAt": row.updated_at.astimezone(UTC).isoformat(),
         }
+
+    async def _incident_view(self, session: AsyncSession, row: IncidentRecord) -> dict[str, object]:
+        result = self._incident_dict(row)
+        telemetry = (
+            await session.scalars(
+                select(TelemetryRecord)
+                .where(TelemetryRecord.event_id.in_([UUID(item) for item in row.source_event_ids]))
+                .order_by(TelemetryRecord.reading_sequence)
+            )
+        ).all()
+        # Include prior readings from the same shipment so sustained-breach evidence is visible.
+        if telemetry:
+            telemetry = (
+                await session.scalars(
+                    select(TelemetryRecord)
+                    .where(TelemetryRecord.shipment_id == row.shipment_id)
+                    .order_by(TelemetryRecord.reading_sequence.desc())
+                    .limit(20)
+                )
+            ).all()[::-1]
+        result["telemetry"] = [
+            {
+                "eventId": str(item.event_id),
+                "occurredAt": item.occurred_at.astimezone(UTC).isoformat(),
+                "readingSequence": item.reading_sequence,
+                "temperatureCelsius": item.temperature_celsius,
+                "cargoType": item.cargo_type,
+                "disposition": item.disposition,
+                "policyInputs": item.policy_inputs,
+                "reasonCodes": item.reason_codes,
+            }
+            for item in telemetry
+        ]
+        evidence = await session.scalar(
+            select(EvidenceRecord).where(EvidenceRecord.incident_id == row.incident_id)
+        )
+        if evidence is not None:
+            result["evidence"] = {
+                "evidenceId": str(evidence.evidence_id),
+                "telemetryEventIds": evidence.telemetry_event_ids,
+                "policyInputs": evidence.policy_inputs,
+                "summary": evidence.summary,
+                "contentHash": evidence.content_hash,
+                "capturedAt": evidence.captured_at.astimezone(UTC).isoformat(),
+            }
+        recommendation = await session.scalar(
+            select(RecommendationRecord).where(RecommendationRecord.incident_id == row.incident_id)
+        )
+        if recommendation is not None:
+            result.update(
+                {
+                    "recommendationId": str(recommendation.recommendation_id),
+                    "recommendedAction": recommendation.action_type,
+                    "recommendationExpiresAt": recommendation.expires_at.isoformat(),
+                    "recommendationProvenance": recommendation.provenance,
+                    "recommendation": {
+                        "recommendationId": str(recommendation.recommendation_id),
+                        "evidenceIds": recommendation.evidence_ids,
+                        "actionType": recommendation.action_type,
+                        "parameters": recommendation.parameters,
+                        "provider": recommendation.provider,
+                        "authorIdentity": recommendation.author_identity,
+                        "rationale": recommendation.rationale,
+                        "expiresAt": recommendation.expires_at.astimezone(UTC).isoformat(),
+                        "nonAuthoritative": recommendation.non_authoritative,
+                        "provenance": recommendation.provenance,
+                    },
+                }
+            )
+            governance = await session.scalar(
+                select(GovernanceRecord).where(
+                    GovernanceRecord.recommendation_id == recommendation.recommendation_id
+                )
+            )
+            if governance is not None:
+                result["governance"] = {
+                    "evaluationId": str(governance.evaluation_id),
+                    "recommendationId": str(governance.recommendation_id),
+                    "decision": governance.decision,
+                    "policyVersion": governance.policy_version,
+                    "reasonCodes": governance.reason_codes,
+                    "inputs": governance.inputs,
+                    "evaluatedAt": governance.evaluated_at.astimezone(UTC).isoformat(),
+                }
+            approval = await session.scalar(
+                select(ApprovalRecord).where(
+                    ApprovalRecord.recommendation_id == recommendation.recommendation_id
+                )
+            )
+            if approval is not None:
+                result["approval"] = {
+                    "approvalId": str(approval.approval_id),
+                    "recommendationId": str(approval.recommendation_id),
+                    "actorId": approval.actor_id,
+                    "actorRole": approval.actor_role,
+                    "decision": approval.decision,
+                    "rationale": approval.rationale,
+                    "decidedAt": approval.decided_at.astimezone(UTC).isoformat(),
+                }
+                command = await session.scalar(
+                    select(CommandRecord).where(CommandRecord.approval_id == approval.approval_id)
+                )
+                if command is not None:
+                    action_result = await session.scalar(
+                        select(ActionResultRecord).where(
+                            ActionResultRecord.command_id == command.command_id
+                        )
+                    )
+                    result["command"] = {
+                        "commandId": str(command.command_id),
+                        "incidentId": str(command.incident_id),
+                        "actionType": command.action_type,
+                        "status": action_result.status if action_result else command.status,
+                        "adapter": action_result.adapter if action_result else None,
+                        "detail": action_result.detail if action_result else None,
+                        "actionResult": (
+                            {
+                                "resultId": str(action_result.result_id),
+                                "status": action_result.status,
+                                "adapter": action_result.adapter,
+                                "detail": action_result.detail,
+                                "completedAt": action_result.completed_at.astimezone(
+                                    UTC
+                                ).isoformat(),
+                            }
+                            if action_result
+                            else None
+                        ),
+                    }
+        return result
 
     @staticmethod
     def _command(row: CommandRecord) -> Command:

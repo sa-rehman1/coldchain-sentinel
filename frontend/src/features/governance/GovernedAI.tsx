@@ -4,8 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CHART_COLORS, ChartLegend, ChartTooltip } from '../../components/data-display/ChartSupport';
 import { KeyValue, Metric, Panel } from '../../components/data-display/Panel';
-import { Button } from '../../components/ui/Primitives';
+import { Button, EmptyState } from '../../components/ui/Primitives';
 import { GovernanceIndicator } from '../../components/ui/StatusIndicators';
+import { dataSourceMode } from '../../data/source';
+import { useDashboard, useHealth } from '../../hooks/useControlTower';
 
 const stages = [
   { id: 'evidence', name: 'Evidence', purpose: 'Collect trusted facts and company instructions.', icon: Database, state: 'Ready', plainResult: 'Six sensor readings and two trusted SOP sections were collected.', controls: ['Input validated', 'Evidence snapshot created', 'Timestamps aligned', 'SOP citations retrieved'], output: 'Evidence bundle ready', handoff: 'Validated incident facts and trusted SOP citations pass to the recommendation stage.' },
@@ -28,8 +30,20 @@ const principles = [
 export function GovernedAI() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const navigate = useNavigate();
+  const { data: dashboard } = useDashboard();
+  const { data: health } = useHealth();
   const selected = stages[selectedIndex]!;
   const selectStage = (index: number) => setSelectedIndex(Math.max(0, Math.min(stages.length - 1, index)));
+
+  if (dataSourceMode === 'api') {
+    const incident = dashboard?.incidents[0];
+    return <div className="page governance-page governance-polished">
+      <section className="governance-intro"><div><span className="section-kicker">Governed recommendations</span><h1>Governed AI</h1><h2>The model recommends. Policy governs. Humans authorize.</h2><p>Opening this view never initiates a provider request.</p></div><div className="execution-mode" aria-label="Execution mode"><KeyValue label="Provider" value={health?.provider ?? 'Unavailable'} /><KeyValue label="Live calls" value={health ? health.liveCallsEnabled ? 'Enabled' : 'Disabled' : 'Unavailable'} /><KeyValue label="Qdrant" value={health?.qdrant ?? 'Unavailable'} /><KeyValue label="Fallback" value={health ? health.fallbackAvailable ? 'Available' : 'Unavailable' : 'Unavailable'} /></div></section>
+      <section className="governance-story" aria-labelledby="governance-story-title"><header><span className="section-kicker">Three control layers</span><h2 id="governance-story-title">How a recommendation becomes a safe action</h2></header><div>{principles.map(({ title, detail, icon: Icon }, index) => <article key={title}><span>{index + 1}</span><Icon size={20} aria-hidden="true" /><div><h3>{title}</h3><p>{detail}</p></div></article>)}</div></section>
+      {!incident ? <section><EmptyState title="No recommendation lifecycle yet" detail="Run a sustained-breach scenario in Demo Lab to create an authoritative incident." /><Button variant="primary" onClick={() => void navigate('/demo-lab')}>Open Demo Lab</Button></section> : <section className="current-example"><div><span className="section-kicker">Most recent incident</span><h2><span className="mono">{incident.id}</span></h2><p>{incident.title}</p></div><dl><div><dt>Shipment</dt><dd className="mono">{incident.shipment}</dd></div><div><dt>Governance</dt><dd><GovernanceIndicator decision={incident.governance} /></dd></div><div><dt>State</dt><dd>{incident.state}</dd></div><div><dt>Temperature</dt><dd>{incident.temperature === null ? 'Unavailable' : `${incident.temperature.toFixed(1)}°C`}</dd></div></dl><Button variant="primary" onClick={() => void navigate(`/investigation/${incident.id}`)}>Open incident investigation <ArrowRight size={16} /></Button></section>}
+      <Panel title="Recent governed decisions" eyebrow="Authoritative incident records"><div className="outcome-table governed-activity">{dashboard?.recommendations.length ? dashboard.recommendations.map((item) => <div key={`${item.incident}-${item.time}`}><span className="mono">{item.incident}</span><strong>{item.action.replaceAll('_', ' ')}</strong><span>{item.outcome}</span><time>{item.time}</time></div>) : <p>No governed decisions reported.</p>}</div></Panel>
+    </div>;
+  }
 
   return <div className="page governance-page governance-polished">
     <section className="governance-intro"><div><span className="section-kicker">Governed recommendations</span><h1>Governed AI</h1><h2>The model recommends. Policy governs. Humans authorize.</h2><p>Every recommendation must pass evidence, validation and policy controls before a human can authorize an operational action.</p></div><div className="execution-mode" aria-label="Execution mode"><KeyValue label="Provider" value="Groq" /><KeyValue label="Live calls" value="Disabled" /><KeyValue label="Mode" value="Deterministic prototype" /><KeyValue label="Fallback" value="Available" /></div></section>

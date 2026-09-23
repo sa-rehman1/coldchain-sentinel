@@ -24,6 +24,9 @@ _ROUTES = (
     "/api/v1/incidents/{incident_id}/recommendations/{recommendation_id}/approve",
     "/api/v1/incidents/{incident_id}/recommendations/{recommendation_id}/reject",
     "/api/v1/commands/{command_id}",
+    "/api/v1/demo/scenarios",
+    "/api/v1/demo/scenarios/{scenario_id}",
+    "/api/v1/demo/runs/{run_id}",
 )
 
 
@@ -40,6 +43,10 @@ def normalize_route(path: str) -> str:
         if "/recommendations/" in path and path.endswith("/reject"):
             return "/api/v1/incidents/{incident_id}/recommendations/{recommendation_id}/reject"
         return "/api/v1/incidents/{incident_id}"
+    if path.startswith("/api/v1/demo/scenarios/"):
+        return "/api/v1/demo/scenarios/{scenario_id}"
+    if path.startswith("/api/v1/demo/runs/"):
+        return "/api/v1/demo/runs/{run_id}"
     if path.startswith("/api/v1/commands/"):
         return "/api/v1/commands/{command_id}"
     return "unmatched"
