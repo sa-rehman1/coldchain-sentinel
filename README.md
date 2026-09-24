@@ -98,6 +98,11 @@ flowchart TD
     Q --> R
     S --> O[Audit and observability]
     N --> O
+
+    style Intake fill:transparent,stroke:#8b949e,stroke-width:1px
+    style Processing fill:transparent,stroke:#8b949e,stroke-width:1px
+    style Evidence fill:transparent,stroke:#8b949e,stroke-width:1px
+    style Authority fill:transparent,stroke:#8b949e,stroke-width:1px
 ```
 
 FastAPI and the worker are separate process entry points within a modular monolith. PostgreSQL is the authoritative workflow store, Kafka carries telemetry events, and Qdrant supplies versioned SOP evidence. Prometheus metrics, structured logs, and OpenTelemetry traces observe the boundaries without persisting prompts, credentials, SOP text, or incident payloads.
