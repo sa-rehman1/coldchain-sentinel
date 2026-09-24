@@ -63,21 +63,41 @@ Every transition is observable and testable. The language model cannot approve a
 ## Architecture
 
 ```mermaid
-flowchart LR
-    UI[React control tower] -->|same-origin API| API[FastAPI]
-    API -->|publish telemetry| K[Kafka]
-    K --> W[Telemetry worker]
-    W --> DB[(PostgreSQL)]
-    W --> Q[(Qdrant SOP index)]
-    Q --> R[Bounded recommendation]
-    W --> R
-    R --> G[Deterministic governance]
-    G --> H{Human authorization}
-    H -->|approved| C[Idempotent command]
-    H -->|rejected| A[Audit event]
-    C --> S[Simulated action]
-    S --> A
+flowchart TD
+    subgraph Intake[Control tower and intake]
+        direction LR
+        UI[React UI] --> API[FastAPI]
+    end
+
+    subgraph Processing[Telemetry processing]
+        direction LR
+        K[Kafka] --> W[Worker]
+    end
+
+    subgraph Evidence[Authoritative evidence]
+        direction LR
+        DB[(PostgreSQL)]
+        Q[(Qdrant SOPs)]
+    end
+
+    subgraph Authority[Decision authority]
+        direction TD
+        R[Advisory AI] --> V[Local validation]
+        V --> G[Deterministic governance]
+        G --> H{Human authorization}
+        H -->|Approve| C[Idempotent command]
+        H -->|Reject| N[No command]
+        C --> S[Simulated adapter]
+    end
+
+    API --> K
     API --> DB
+    W --> DB
+    W --> Q
+    W --> R
+    Q --> R
+    S --> O[Audit and observability]
+    N --> O
 ```
 
 FastAPI and the worker are separate process entry points within a modular monolith. PostgreSQL is the authoritative workflow store, Kafka carries telemetry events, and Qdrant supplies versioned SOP evidence. Prometheus metrics, structured logs, and OpenTelemetry traces observe the boundaries without persisting prompts, credentials, SOP text, or incident payloads.
@@ -256,26 +276,43 @@ Observability services bind to localhost and do not receive prompts, unrestricte
 ## Repository structure
 
 ```text
-src/coldchain/
-  api/              FastAPI composition, routes, middleware, and transport schemas
-  application/      workflow services and application-facing protocols
-  domain/           framework-independent policy and workflow models
-  infrastructure/   PostgreSQL and Kafka adapters
-  ai/               provider contract, strict output models, and prompt assets
-  retrieval/        SOP corpus loading, chunking, embeddings, and Qdrant access
-  governance/       deterministic governance engine
-  observability/    metrics, logging, and tracing boundaries
-  workers/          Kafka telemetry worker entry point
-frontend/            feature-oriented React control tower
-tests/               unit, integration, live opt-in, and Docker E2E tests
-contracts/           versioned JSON Schemas and examples
-alembic/             immutable PostgreSQL migration history
-sop/                 authored ColdChain Sentinel SOP corpus
-evaluations/         deterministic scenarios and thresholds
-observability/       Prometheus and Grafana configuration
-scripts/             validation, ingestion, evaluation, and demo workflows
-docs/                architecture, security, operations, and portfolio material
+.
+├── src/
+│   └── coldchain/
+├── frontend/
+├── tests/
+├── contracts/
+├── alembic/
+├── sop/
+├── evaluations/
+├── observability/
+├── scripts/
+└── docs/
 ```
+
+| Top-level directory | Responsibility |
+| --- | --- |
+| `src/coldchain/` | Python modular monolith and process entry points |
+| `frontend/` | Feature-oriented React control tower |
+| `tests/` | Unit, integration, live opt-in, and Docker E2E tests |
+| `contracts/` | Versioned JSON Schemas and examples |
+| `alembic/` | Immutable PostgreSQL migration history |
+| `sop/` | Authored ColdChain Sentinel SOP corpus |
+| `evaluations/` | Deterministic scenarios and thresholds |
+| `observability/` | Prometheus and Grafana configuration |
+| `scripts/` | Validation, ingestion, evaluation, and demo workflows |
+| `docs/` | Architecture, security, operations, and portfolio material |
+
+| Python package | Responsibility |
+| --- | --- |
+| `api/` | FastAPI composition, routes, middleware, and transport schemas |
+| `application/` | Workflow services and application-facing protocols |
+| `domain/` | Framework-independent policy and workflow models |
+| `infrastructure/` | PostgreSQL and Kafka adapters |
+| `ai/` and `retrieval/` | Provider boundary, prompt assets, SOP retrieval, and Qdrant access |
+| `governance/` | Deterministic governance engine |
+| `observability/` | Metrics, logging, and tracing boundaries |
+| `workers/` | Kafka telemetry worker entry point |
 
 ## Documentation
 

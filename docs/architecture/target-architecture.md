@@ -12,44 +12,56 @@ ColdChain Sentinel detects temperature breaches and coordinates a governed respo
 4. **Operational command** — an idempotent instruction created only after authorization.
 
 ```mermaid
-flowchart LR
-    R[Recommendation] --> V[Local validation]
+flowchart TD
+    R[Advisory recommendation] --> V[Local validation]
     V --> G[Deterministic governance]
     G --> H{Human authorization}
-    H -->|approved| C[Idempotent command]
-    H -->|rejected| N[No command]
+    H -->|Approve| C[Approved command]
+    H -->|Reject| N[No command]
     C --> A[Simulated adapter]
+    A --> E[Audit event]
+    N --> E
 ```
 
 ## End-to-end data flow
 
-```mermaid
-sequenceDiagram
-    participant UI as React control tower
-    participant API as FastAPI
-    participant K as Kafka
-    participant W as Worker
-    participant DB as PostgreSQL
-    participant Q as Qdrant
-    participant P as Recommendation provider
+### Evidence and recommendation
 
-    UI->>API: Start synthetic scenario
-    API->>K: Publish versioned telemetry
-    K->>W: Deliver telemetry
-    W->>W: Apply deterministic breach policy
-    W->>DB: Persist reading, incident, evidence
-    W->>Q: Retrieve effective SOP chunks
-    W->>P: Bounded recommendation request
-    P-->>W: Eight-field advisory decision
-    W->>W: Validate schema, actions, citations, expiry
-    W->>W: Evaluate deterministic governance
-    W->>DB: Persist recommendation, governance, audit
-    UI->>API: Approve or reject with idempotency key
-    API->>DB: Persist decision and optional command
-    API->>API: Run simulated action adapter
-    API->>DB: Persist result and audit events
-    API-->>UI: Authoritative incident state
+```mermaid
+flowchart TD
+    UI[React UI] -->|Start scenario| API[FastAPI]
+    API -->|Versioned telemetry| K[Kafka]
+    K -->|Deliver telemetry| W[Worker]
+    W --> B[Evaluate breach policy]
+    B --> E[Persist incident and evidence]
+    E --> DB[(PostgreSQL)]
+    B --> Q[Qdrant SOP retrieval]
+    Q --> R[Bounded recommendation]
+    R --> V[Validate output and provenance]
+    V --> G[Evaluate governance]
+    G --> P[Persist governed result]
+    P --> DB
 ```
+
+The worker validates the telemetry contract before applying deterministic breach policy. It stores the reading, incident, and immutable evidence snapshot before retrieving effective SOP chunks. The provider returns advisory fields only; local code validates them, attaches trusted provenance, evaluates governance, and persists the result and audit events.
+
+### Authorization and execution
+
+```mermaid
+flowchart TD
+    UI[React review] --> API[FastAPI]
+    API --> G[Recheck governance]
+    G --> H{Human reviewer}
+    H -->|Approve with idempotency key| C[Create command]
+    H -->|Reject| N[No command]
+    C --> S[Simulated adapter]
+    S --> P[Persist result]
+    N --> P
+    P --> DB[(PostgreSQL audit timeline)]
+    DB --> U[Authoritative UI state]
+```
+
+FastAPI accepts the reviewer identity, rationale, and idempotency key. Rejection records the human decision without creating a command. Authorized approval creates one idempotent command, invokes only the simulated adapter, and persists the result and audit events before authoritative state is returned to the control tower.
 
 ## Components
 
@@ -98,7 +110,7 @@ Metrics use bounded labels and exclude incident content. Structured logs allowli
 ## Failure and safety behavior
 
 | Failure | Safe behavior |
-|---|---|
+| --- | --- |
 | Provider disabled, missing key, timeout, rejection, rate limit, or circuit open | Deterministic recommendation |
 | Invalid output or citation | Reject provider output; deterministic fallback |
 | Missing retrieval evidence | Fallback with insufficiency metadata |
