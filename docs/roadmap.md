@@ -1,32 +1,19 @@
-# Phased roadmap
+# Roadmap and current scope
 
-## Milestone 0 - secure, reproducible Python foundation
+## Implemented locally
 
-FastAPI skeleton, PostgreSQL and Alembic boundaries, Kafka KRaft development
-infrastructure, versioned contracts, deterministic governance, locked dependencies,
-CI, tests, and truthful documentation.
+- Versioned telemetry, Kafka ingestion, deterministic breach policy, PostgreSQL persistence, and Alembic migrations.
+- Immutable evidence, Qdrant SOP retrieval, strict provider output, deterministic fallback and governance, human approval, idempotent commands, and simulated execution.
+- React control tower, local scenarios, Prometheus/Grafana dashboards, OpenTelemetry/Jaeger tracing, structured logs, and deterministic evaluation.
+- Optional Groq validation and offline-tested OpenAI support; deterministic mode remains the default.
 
-## Milestone 1 - governed temperature-breach vertical slice
+## Production hardening still required
 
-Replay versioned telemetry, detect a deterministic fresh-perishable breach,
-create one idempotent incident, collect bounded evidence, generate a typed
-non-authoritative recommendation, require dispatcher approval, execute a simulated
-action, and record the complete audit trail. Add Langfuse, OpenTelemetry,
-Prometheus, and Grafana with this workflow.
+- Enterprise OIDC/RBAC, managed secrets, TLS, network policy, privacy/retention controls, and immutable audit storage.
+- Real telemetry, weather, carrier/TMS, notification, and action adapters.
+- Transactional outbox/inbox patterns, durable retries, capacity testing, failure injection, recovery procedures, SLOs, backups, HA, and disaster recovery.
+- Provider contracts, cost budgets, model qualification, shadow evaluation, and operating-environment validation.
 
-## Milestone 2 - security and reliability hardening
+## Deliberately out of scope
 
-OIDC/RBAC, policy administration, transactional outbox, retries and dead letters,
-durable worker coordination, data redaction and retention, tamper-evident audit,
-failure injection, load testing, recovery procedures, and SLOs.
-
-## Milestone 3 - production integrations
-
-Read-only SQL Server adapter, real telemetry and weather contracts, Qdrant-backed
-versioned SOP retrieval, dispatch/TMS adapters, notifications, immutable artifacts,
-deployment promotion, high availability, and disaster recovery.
-
-## Milestone 4 - controlled optimization
-
-Calibrated anomaly models, route-risk support, policy simulation, shadow-mode AI
-evaluation, and narrowly scoped automation only where governance permits it.
+Cloud deployment, Kubernetes/Terraform, autonomous consequential actions, real shipment control, and production-scale claims are not part of the portfolio release.

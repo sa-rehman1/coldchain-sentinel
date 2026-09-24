@@ -65,9 +65,9 @@ export const dashboard: DashboardData = {
     { name: 'PostgreSQL', state: 'healthy', latency: '7 ms', detail: 'Pool 4 / 20' },
     { name: 'Kafka', state: 'healthy', latency: '24 ms', detail: 'Consumer lag 3' },
     { name: 'Qdrant', state: 'healthy', latency: '31 ms', detail: 'Collection ready' },
-    { name: 'Prometheus', state: 'healthy', latency: '—', detail: 'Targets 5 / 5', url: 'http://localhost:9090' },
-    { name: 'Grafana', state: 'healthy', latency: '—', detail: 'Provisioned', url: 'http://localhost:3000' },
-    { name: 'Jaeger', state: 'degraded', latency: '—', detail: '2 delayed spans', url: 'http://localhost:16686' },
+    { name: 'Prometheus', state: 'healthy', latency: '—', detail: 'Targets 5 / 5', url: 'http://localhost:19090' },
+    { name: 'Grafana', state: 'healthy', latency: '—', detail: 'Provisioned', url: 'http://localhost:13001' },
+    { name: 'Jaeger', state: 'degraded', latency: '—', detail: '2 delayed spans', url: 'http://localhost:16687' },
   ],
   trend: [
     { hour: '00:00', incidents: 3, breaches: 1, awaitingReview: 1 }, { hour: '04:00', incidents: 5, breaches: 2, awaitingReview: 1 },

@@ -1,100 +1,114 @@
-# Target architecture
+# ColdChain Sentinel architecture
 
-## Decision summary
+This is the authoritative architecture for the current local portfolio system. Milestone documents remain historical implementation records.
 
-ColdChain Sentinel is a Python-only modular application with separate process
-entrypoints. It starts as one repository and deployable codebase, not as premature
-microservices. Modules share versioned domain and contract packages while process
-boundaries allow independent scaling later.
+## Purpose and trust model
 
-```text
-Telemetry sources -> Kafka -> telemetry worker -> PostgreSQL incidents
-                                          |             |
-SOPs + weather + telemetry -> AI investigation worker   |
-                                          |             v
-                                          +-> recommendation
-                                                    |
-Dispatcher UI -> FastAPI control plane -> governance -> approval
-                                                    |
-                                                    v
-                                             action worker
-                                          (simulated first)
+ColdChain Sentinel detects temperature breaches and coordinates a governed response. It separates four concepts:
+
+1. **AI recommendation** — untrusted, evidence-linked advice.
+2. **Governance decision** — deterministic classification under versioned policy.
+3. **Human authorization** — an accountable approve/reject decision.
+4. **Operational command** — an idempotent instruction created only after authorization.
+
+```mermaid
+flowchart LR
+    R[Recommendation] --> V[Local validation]
+    V --> G[Deterministic governance]
+    G --> H{Human authorization}
+    H -->|approved| C[Idempotent command]
+    H -->|rejected| N[No command]
+    C --> A[Simulated adapter]
 ```
 
-## Module boundaries
+## End-to-end data flow
 
-- `api`: transport, authentication integration, errors, and dependency wiring.
-- `domain`: framework-free entities, value types, policies, and interfaces.
-- `application`: use cases, transaction orchestration, and ports.
-- `infrastructure`: PostgreSQL, Kafka, weather, retrieval, and vendor adapters.
-- `contracts`: versioned external messages and JSON Schema definitions.
-- `governance`: deterministic implementations of domain governance interfaces.
-- `ai`: bounded LangGraph investigation and typed recommendations.
-- `workers`: independent telemetry, investigation, and action entrypoints.
-- `observability`: structured logging, tracing, metrics, and redaction.
+```mermaid
+sequenceDiagram
+    participant UI as React control tower
+    participant API as FastAPI
+    participant K as Kafka
+    participant W as Worker
+    participant DB as PostgreSQL
+    participant Q as Qdrant
+    participant P as Recommendation provider
 
-The domain layer must not import FastAPI, Kafka, SQLAlchemy, LangGraph, or vendor
-SDKs. Infrastructure depends inward on application/domain interfaces.
+    UI->>API: Start synthetic scenario
+    API->>K: Publish versioned telemetry
+    K->>W: Deliver telemetry
+    W->>W: Apply deterministic breach policy
+    W->>DB: Persist reading, incident, evidence
+    W->>Q: Retrieve effective SOP chunks
+    W->>P: Bounded recommendation request
+    P-->>W: Eight-field advisory decision
+    W->>W: Validate schema, actions, citations, expiry
+    W->>W: Evaluate deterministic governance
+    W->>DB: Persist recommendation, governance, audit
+    UI->>API: Approve or reject with idempotency key
+    API->>DB: Persist decision and optional command
+    API->>API: Run simulated action adapter
+    API->>DB: Persist result and audit events
+    API-->>UI: Authoritative incident state
+```
 
-## Process responsibilities
+## Components
 
-### FastAPI control plane
+### Telemetry and Kafka
 
-Owns shipment, telemetry, incident, recommendation, policy, approval, action
-command, and authoritative audit APIs. It validates identity and authorization,
-persists decisions, and emits events through a transactional outbox.
+The local demo publishes versioned synthetic telemetry to `coldchain.telemetry.v1`. The worker uses manual commit semantics, validates contracts, handles stale and duplicate readings, and uses `coldchain.telemetry.dlq.v1` for bounded failure envelopes. Kafka carries events; PostgreSQL is authoritative for workflow state.
 
-### Telemetry worker
+### Breach detection and persistence
 
-Consumes versioned Kafka messages, validates and normalizes readings, enforces
-event-id idempotency, detects deterministic anomalies, and creates incidents in a
-single transaction before committing offsets.
+The worker applies a versioned deterministic temperature policy. PostgreSQL stores telemetry outcomes, incidents, evidence, recommendations, governance evaluations, approvals, commands, action results, and audit events. Alembic owns schema evolution.
 
-### AI investigation worker
+### Evidence snapshots
 
-Uses bounded LangGraph orchestration to assemble temporally aligned telemetry,
-weather, operational, and versioned SOP evidence. It emits a typed recommendation
-that explicitly carries no authority. It cannot call action adapters.
+An evidence snapshot freezes the readings, policy inputs, summary, timestamp, and content hash used for a recommendation. Later decisions reference the facts available at recommendation time rather than mutable UI state.
 
-### Governance engine
+### SOP retrieval
 
-Evaluates versioned policies deterministically. Kill-switch and prohibited-action
-decisions take precedence; unknown actions fail closed. LLM output is data, never
-a policy decision.
+Six authored ColdChain Sentinel SOP documents are chunked deterministically and indexed in Qdrant. Retrieval filters by effective and superseded dates. Chunk, document, and section identifiers are validated before model citations are accepted. The default embedding implementation is deterministic and network-free.
 
-### Action worker
+### Bounded recommendation
 
-Consumes authorized commands only, revalidates parameters and policy context,
-uses an idempotency key, initially calls simulated adapters, and records outcomes.
+The provider-neutral boundary supports deterministic local output, Groq, and optional OpenAI. Live calls are disabled by default. An external model may choose only the recommended action, rationale, SOP and incident citations, contraindications, missing information, evidence sufficiency, and uncertainty.
 
-## Data and event strategy
+Application code owns provider/model identity, schema and prompt versions, prompt hash, timestamps, latency, token usage, expiry, correlation ID, validation state, billing mode, and fallback state. Invalid JSON, schema drift, unknown citations, unsupported actions, timeouts, rate limits, provider errors, circuit-open state, or insufficient evidence select deterministic fallback.
 
-PostgreSQL is the authoritative operational store. Kafka carries versioned facts
-and commands. Producers assign globally unique `eventId` values. Consumers store
-processed IDs under a uniqueness constraint in the same transaction as business
-changes, then commit Kafka offsets. Commands also carry domain idempotency keys.
-The transactional outbox prevents database/event divergence.
+### Governance and human authority
 
-SQL Server remains a future read-only legacy adapter. Qdrant is deferred until
-versioned SOP retrieval is implemented. Redis is added only for a demonstrated
-caching, rate-limiting, or coordination requirement.
+Deterministic governance independently classifies the proposed action. `HOLD_SHIPMENT` requires an authorized dispatcher. The kill switch takes precedence. The model cannot approve itself, alter policy, write directly to PostgreSQL, or create a command.
 
-## Security and observability
+### Commands and simulated execution
 
-Non-local database connections require certificate verification; Kafka requires
-encrypted transport. Authentication, RBAC, secret management, input redaction,
-retention, and tamper-evident audit controls are phased in before production.
+Approval includes a stable idempotency key. Exact replays return the original outcome; conflicting reuse fails. Only an authorized approved recommendation can create a command. The current adapter simulates the shipment hold and records the result; it does not contact a carrier or warehouse.
 
-Langfuse, OpenTelemetry, Prometheus, and Grafana enter with the first governed
-workflow in Milestone 1. Langfuse is for AI diagnostics and evaluation, not the
-authoritative compliance audit.
+### Audit timeline
 
-## Current versus planned
+Workflow events are append-only and hash-linked. The timeline records correlation, causation, actor, component and schema versions, payload, timestamp, prior hash, and event hash. This demonstrates tamper evidence but is not a substitute for production immutable storage.
 
-Milestones 0 and 1A implement the application, persistence, configuration, and
-contract foundations plus Kafka telemetry consumption, deterministic breach
-detection, incident evidence, non-authoritative recommendations, governance,
-dispatcher approval, idempotent simulated actions, and the hash-linked audit
-timeline. Enriched weather/SOP investigation, governed LLM recommendations,
-production identity, observability integrations, real action adapters, and the
-dispatcher UI remain planned.
+### API and React control tower
+
+FastAPI exposes health, demo, incident, decision, command, and metrics endpoints. The Nginx-served React application uses a same-origin `/api` proxy, strict Zod response validation, bounded timeouts, cancellation, and no mutation retries. API mode never silently substitutes fixture data.
+
+### Observability
+
+Metrics use bounded labels and exclude incident content. Structured logs allowlist fields and redact credential-shaped values. OpenTelemetry spans carry correlation context across HTTP and Kafka without recording prompts, SOP text, responses, credentials, or payloads. Prometheus, Grafana, and Jaeger are localhost-only optional services.
+
+## Failure and safety behavior
+
+| Failure | Safe behavior |
+|---|---|
+| Provider disabled, missing key, timeout, rejection, rate limit, or circuit open | Deterministic recommendation |
+| Invalid output or citation | Reject provider output; deterministic fallback |
+| Missing retrieval evidence | Fallback with insufficiency metadata |
+| Expired recommendation | Governance blocks approval |
+| Unauthorized identity | API rejects the decision |
+| Duplicate decision | Idempotent original result |
+| Conflicting idempotency reuse | HTTP 409; no second command |
+| Kill switch active | No operational command |
+| UI/API disconnect | Visible unavailable state; no fixture substitution |
+
+## Local versus production
+
+Local Compose binds ports to loopback and uses development credentials, plaintext internal Kafka, synthetic identities, simulated actions, and single-node services. Production requires managed identity and secrets, TLS, network isolation, data governance, real integrations, transactional delivery guarantees, capacity and chaos testing, backups, HA/DR, operational SLOs, provider cost controls, and deployment-specific regulatory validation.

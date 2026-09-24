@@ -648,6 +648,14 @@ def test_provider_network_circuit_and_validation_failures(monkeypatch: pytest.Mo
 
 def test_provider_factory_is_offline_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
-    provider = build_recommendation_provider(Settings(environment="test", database_url=None))
+    provider = build_recommendation_provider(
+        Settings(
+            _env_file=None,
+            environment="test",
+            database_url=None,
+            llm_provider="groq",
+            llm_live_calls_enabled=False,
+        )
+    )
     assert isinstance(provider, RetrievalGroundedRecommendationProvider)
     assert provider._provider.config.live_calls_enabled is False

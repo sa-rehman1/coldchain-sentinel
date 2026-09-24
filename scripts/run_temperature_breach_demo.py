@@ -1,4 +1,4 @@
-"""Run the deterministic Milestone 1A scenario against a local API."""
+"""Run the deterministic temperature-breach scenario against a local API."""
 
 import argparse
 import json
@@ -45,7 +45,7 @@ def main() -> None:
         "eventId": EVENT_ID,
         "correlationId": CORRELATION_ID,
         "occurredAt": datetime.now(UTC).isoformat(),
-        "producer": "milestone-1a-demo",
+        "producer": "coldchain-local-demo",
         "shipmentId": SHIPMENT_ID,
         "vehicleId": "demo-vehicle-1",
         "sensorId": "demo-sensor-1",
@@ -74,7 +74,7 @@ def main() -> None:
         ),
         {
             "rationale": "Deterministic demo evidence reviewed",
-            "idempotencyKey": "milestone-1a-demo-approval-v1",
+            "idempotencyKey": "coldchain-local-demo-approval-v1",
         },
         {"X-Actor-ID": "dispatcher:demo", "X-Actor-Roles": "dispatcher"},
     )

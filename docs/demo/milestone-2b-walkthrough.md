@@ -1,10 +1,11 @@
-# Milestone 2B local demonstration
+# Integrated local demonstration
 
-Start the integrated local demo with external AI disabled:
+Start the integrated deterministic demo. The launcher validates configuration, starts Compose,
+applies migrations through the existing one-shot service, loads the SOP corpus, waits for health,
+and prints the local URLs:
 
 ```powershell
-$env:LLM_LIVE_CALLS_ENABLED='false'
-docker compose --profile demo up -d --build --wait
+.\scripts\demo.ps1 -Action Start -Observability
 ```
 
 Open `http://127.0.0.1:4173`, confirm the header says `Local demo · API`, and select
@@ -22,3 +23,8 @@ than fixture metrics when a source is absent.
 
 The demo does not enable or call Groq or OpenAI, download an embedding model, reset a database, or
 delete Docker resources.
+
+Validate an already-running stack with `.\scripts\demo.ps1 -Action Validate -Observability`. Stop
+it safely with `.\scripts\demo.ps1 -Action Stop -Observability`; this preserves containers,
+volumes, and data. Optional Groq requires the explicit `-EnableGroq` switch and is never required
+for a successful walkthrough. OpenAI is never enabled by the launcher.
