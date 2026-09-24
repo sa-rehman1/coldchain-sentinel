@@ -1,4 +1,5 @@
 import type {
+  Action,
   ControlTowerDataSource,
   DashboardData,
   DecisionResult,
@@ -23,6 +24,12 @@ import {
 } from './schemas';
 
 const providerLabel = (provider: string): string => ({ openai: 'OpenAI', groq: 'Groq', deterministic: 'Deterministic' })[provider] ?? provider;
+
+const hasRecommendation = (incident: Incident): incident is Incident & { recommendationId: string; recommendedAction: Action } =>
+  typeof incident.recommendationId === 'string' && incident.recommendedAction !== undefined;
+
+const hasTelemetry = (incident: Incident): incident is Incident & { temperature: number; allowedMax: number } =>
+  incident.temperature !== null && incident.allowedMax !== null;
 
 const scenarioVariant = (id: string): Scenario['variant'] => {
   if (id === 'critical' || id === 'sustained') return 'critical';
@@ -70,8 +77,8 @@ export class HttpControlTowerDataSource implements ControlTowerDataSource {
         { name: 'Qdrant', state: health.qdrant === 'ready' ? 'healthy' : 'degraded', latency: 'Not reported', detail: health.qdrant },
       ],
       trend: [],
-      recommendations: incidents.filter((item) => item.recommendationId && item.recommendedAction).slice(0, 8).map((item) => ({ time: `${item.createdMinutesAgo}m ago`, incident: item.id, action: item.recommendedAction!, outcome: item.state === 'completed' ? 'Completed' : item.governance === 'approval-required' ? 'Awaiting review' : item.governance })),
-      liveTelemetry: incidents.filter((item) => item.temperature !== null && item.allowedMax !== null).slice(0, 6).map((item) => ({ id: item.shipment, route: item.route ? `${item.route.from} → ${item.route.to}` : 'Route not reported', product: item.product ?? 'Not reported', temperature: item.temperature!, allowedMin: item.allowedMin, allowedMax: item.allowedMax!, state: item.severity, lastReading: `${item.createdMinutesAgo}m ago`, trend: [] })),
+      recommendations: incidents.filter(hasRecommendation).slice(0, 8).map((item) => ({ time: `${item.createdMinutesAgo}m ago`, incident: item.id, action: item.recommendedAction, outcome: item.state === 'completed' ? 'Completed' : item.governance === 'approval-required' ? 'Awaiting review' : item.governance })),
+      liveTelemetry: incidents.filter(hasTelemetry).slice(0, 6).map((item) => ({ id: item.shipment, route: item.route ? `${item.route.from} → ${item.route.to}` : 'Route not reported', product: item.product ?? 'Not reported', temperature: item.temperature, allowedMin: item.allowedMin, allowedMax: item.allowedMax, state: item.severity, lastReading: `${item.createdMinutesAgo}m ago`, trend: [] })),
       generatedAt: new Date().toISOString(),
     };
   }

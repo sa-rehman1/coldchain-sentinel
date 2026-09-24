@@ -1,5 +1,7 @@
 # Milestone 2B: real control-tower integration
 
+> Historical implementation record. See the [target architecture](target-architecture.md) for the current system.
+
 The React control tower keeps its typed `ControlTowerDataSource` boundary. `mock` mode is reserved
 for isolated visual development and deterministic screenshots; the Compose demo builds in `api`
 mode. API mode uses one same-origin client, strict Zod response validation, bounded timeouts,

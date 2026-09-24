@@ -1,5 +1,7 @@
 # Milestone 1A: governed temperature-breach slice
 
+> Historical implementation record. See the [target architecture](target-architecture.md) for the current system.
+
 ## Runtime flow
 
 `TelemetryEvent` is accepted by the API, validated, and published to `coldchain.telemetry.v1` with the shipment identifier as its Kafka key. The manual-commit worker validates the message again, evaluates the versioned fresh/perishable policy, and writes telemetry, incident, evidence, recommendation, governance, and audit records in one PostgreSQL transaction. Only then is the Kafka offset committed.

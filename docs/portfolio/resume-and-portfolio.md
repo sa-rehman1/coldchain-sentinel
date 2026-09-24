@@ -5,7 +5,7 @@
 - Engineered a governed-AI cold-chain control tower with FastAPI, React/TypeScript, Kafka, PostgreSQL, and Qdrant, converting synthetic telemetry into evidence-backed, auditable incident workflows.
 - Designed a provider-neutral recommendation boundary with strict structured output, citation allowlists, trusted provenance, bounded retries/circuit breaking, and deterministic fallback across local, Groq, and offline-tested OpenAI configurations.
 - Enforced human-in-the-loop safety through versioned deterministic governance, kill-switch precedence, role-checked approval, idempotent command creation, simulated execution, and a hash-linked audit timeline.
-- Delivered reproducible quality gates with 109 passing non-live backend tests at 86.96% coverage, 50 frontend/accessibility tests, and 16/16 deterministic evaluation scenarios, plus Prometheus/Grafana and OpenTelemetry/Jaeger observability.
+- Delivered reproducible quality gates with 109 passing non-live backend tests at 87.09% coverage, 50 frontend/accessibility tests, and 16/16 deterministic evaluation scenarios, plus Prometheus/Grafana and OpenTelemetry/Jaeger observability.
 
 ## Two-line resume description
 
@@ -25,7 +25,7 @@ I built **ColdChain Sentinel** to explore a question beyond “Can an LLM produc
 
 The local project combines React, FastAPI, Kafka, PostgreSQL, Qdrant, deterministic governance, strict provider output, human approval, idempotent simulated actions, and end-to-end observability. AI is deliberately non-authoritative: it recommends, policy decides, and a human authorizes.
 
-Development validation includes 109 passing non-live backend tests at 86.96% coverage, 50 frontend/accessibility tests, and 16/16 deterministic evaluation scenarios. All data and actions are synthetic; this is a portfolio system, not a production deployment.
+Development validation includes 109 passing non-live backend tests at 87.09% coverage, 50 frontend/accessibility tests, and 16/16 deterministic evaluation scenarios. All data and actions are synthetic; this is a portfolio system, not a production deployment.
 
 ## Portfolio-card summary
 
@@ -39,4 +39,4 @@ An evidence-first cold-chain operations demo where AI recommendations are constr
 
 Python 3.12, FastAPI, Pydantic, SQLAlchemy, Alembic, React 19, TypeScript 6, Kafka 3.9, PostgreSQL 16, Qdrant 1.19, Prometheus, Grafana, OpenTelemetry, Jaeger, Docker Compose, uv, Vitest, pytest, mypy, Ruff, ESLint, Zod, and jest-axe.
 
-Verified locally: 109 non-live backend tests; 86.96% coverage; 50 frontend/accessibility tests; 16/16 deterministic evaluations; one controlled Groq validation; zero OpenAI live requests. These are development-validation results, not production usage metrics.
+Verified locally: 109 non-live backend tests; 87.09% coverage; 50 frontend/accessibility tests; 16/16 deterministic evaluations; one controlled Groq validation; zero OpenAI live requests. These are development-validation results, not production usage metrics.

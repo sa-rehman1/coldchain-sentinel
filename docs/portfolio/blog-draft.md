@@ -54,7 +54,7 @@ The goal is not simply to make the system observable. It is to make the right op
 
 The deterministic evaluation harness contains 16 scenarios covering classification, governance agreement, citation validity, schema validity, injection resistance, fallback correctness, unauthorized-action prevention, and audit completeness. Reports are reproducible and ignored by Git.
 
-The final development checks recorded 109 passing non-live backend tests at 86.96% coverage, 50 passing frontend and accessibility tests, and 16/16 passing evaluation scenarios. These are development-validation results, not production service metrics.
+The final development checks recorded 109 passing non-live backend tests at 87.09% coverage, 50 passing frontend and accessibility tests, and 16/16 passing evaluation scenarios. These are development-validation results, not production service metrics.
 
 ## What I learned
 

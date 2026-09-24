@@ -1,113 +1,149 @@
 # ColdChain Sentinel
 
-**A governed AI cold-chain control tower that turns temperature telemetry into evidence-backed recommendations while deterministic policy and authorized humans retain control.**
+ColdChain Sentinel is a governed AI control tower for temperature-sensitive logistics. It converts telemetry into evidence-backed operational recommendations while deterministic policy and accountable human reviewers retain decision authority.
 
-Temperature excursions can spoil sensitive cargo, but an alert alone does not answer the operational questions: Is the evidence trustworthy? Which procedure applies? Is the proposed action allowed? Who is accountable? ColdChain Sentinel demonstrates an end-to-end answer with synthetic local data, durable workflow state, trusted SOP retrieval, bounded AI advice, deterministic governance, human approval, and an auditable simulated action.
+The repository demonstrates a complete local workflow: Kafka telemetry ingestion, deterministic breach detection, immutable evidence, versioned SOP retrieval, bounded AI recommendations, policy enforcement, human approval, idempotent commands, simulated execution, and an append-only audit trail.
 
-> This is a portfolio-scale local system, not a production deployment or a source of medical, regulatory, or logistics authorization.
+> ColdChain Sentinel is a portfolio-scale engineering system built with synthetic data. It is not deployed, does not control real shipments, and does not provide medical, regulatory, or logistics authorization.
 
-## Why this is more than an AI chatbot
+## Demonstration
 
-The model is an untrusted adviser behind a strict boundary. It can return only eight decision fields; it cannot set provenance, expiry, policy results, approvals, or commands. Application code validates the schema and citations, deterministic policy classifies the proposed action, and an authorized person makes the consequential decision. Provider failure safely selects deterministic fallback.
+> A narrated end-to-end demonstration will be added after the final recording. The repository already includes a deterministic local demo workflow and a complete recording guide.
 
-## Main capabilities
+- [Demo recording script](docs/portfolio/demo-recording-script.md)
+- [Screenshot plan](docs/portfolio/screenshot-plan.md)
 
-- Kafka-based synthetic telemetry ingestion and worker processing.
-- Deterministic temperature-breach detection with immutable evidence snapshots.
-- Versioned ColdChain Sentinel SOP retrieval from Qdrant.
-- Provider-neutral recommendations: deterministic by default, optional Groq, and offline-tested OpenAI support.
-- Strict output, allowed-action, evidence, citation, expiry, and provenance validation.
-- Deterministic governance, kill-switch enforcement, and human approval.
-- Idempotent command creation and simulated action execution.
-- PostgreSQL incident state plus a hash-linked, append-only audit timeline.
-- React control tower with API validation and no browser-held provider credentials.
-- Prometheus metrics, redacted logs, OpenTelemetry traces, Grafana, and Jaeger.
-- A deterministic 16-scenario evaluation harness.
+<!-- Replace this comment with the final linked video thumbnail after recording and privacy review. -->
 
-## Governed decision workflow
+## Problem
+
+A temperature alert does not by itself establish what happened, which operating procedure applies, whether a proposed response is permitted, or who authorized the resulting action. An operational system must preserve evidence, apply policy independently of probabilistic model output, prevent duplicate execution, and explain the complete decision later.
+
+ColdChain Sentinel treats AI as one bounded input to that process rather than as the system of authority.
+
+## System behavior
+
+For a sustained synthetic temperature excursion, the platform:
+
+1. accepts versioned telemetry through FastAPI and publishes it to Kafka;
+2. evaluates a deterministic temperature policy in the worker;
+3. persists telemetry, an incident, and an immutable evidence snapshot in PostgreSQL;
+4. retrieves effective ColdChain Sentinel SOP chunks from Qdrant;
+5. produces a bounded recommendation through the deterministic provider or an explicitly enabled external provider;
+6. validates schema, action, evidence, citations, expiry, and provenance;
+7. applies deterministic governance, including kill-switch precedence;
+8. requires an authorized human decision for `HOLD_SHIPMENT`;
+9. creates one idempotent command after approval;
+10. records a simulated action result and hash-linked audit events.
+
+## Why governed AI
+
+An ordinary chatbot can generate plausible text but cannot safely own operational authority. ColdChain Sentinel separates four responsibilities:
+
+- **Recommendation:** an advisory proposal grounded in incident evidence and retrieved SOP identifiers.
+- **Governance decision:** a deterministic policy result that can allow, block, or require approval.
+- **Human authorization:** an accountable, role-checked decision with rationale and expiry enforcement.
+- **Command:** an idempotent instruction created only after every preceding control succeeds.
+
+The provider can return only eight decision fields. Trusted application code owns provider identity, prompt and schema versions, timestamps, expiry, correlation, billing mode, validation state, and provenance. Invalid output or provider failure selects deterministic fallback; it never bypasses governance.
+
+## End-to-end workflow
+
+```text
+Telemetry and evidence
+  -> advisory recommendation
+  -> deterministic governance
+  -> human authorization
+  -> idempotent command
+  -> simulated action and audit event
+```
+
+Every transition is observable and testable. The language model cannot approve a recommendation, create a command, or invoke the action adapter.
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    T[Telemetry] --> B[Deterministic breach policy]
-    B --> E[Immutable evidence snapshot]
-    E --> R[SOP retrieval]
-    R --> A[Bounded recommendation]
-    A --> V[Schema and citation validation]
-    V --> G[Deterministic governance]
-    G --> H{Authorized human decision}
-    H -->|Approve| C[Idempotent command]
-    H -->|Reject| X[Final rejection]
-    C --> S[Simulated action]
-    B & E & A & G & H & C & S --> U[Append-only audit timeline]
-```
-
-```mermaid
-flowchart TB
-    M[AI recommendation<br/>non-authoritative] --> P[Policy decision<br/>deterministic]
-    P --> H[Human authorization<br/>accountable]
-    H --> C[Operational command<br/>idempotent]
-    C --> A[Action adapter<br/>simulated locally]
-```
-
-## System architecture
-
-```mermaid
-flowchart TB
-    UI[React control tower] -->|same-origin /api| API[FastAPI]
-    API --> PG[(PostgreSQL)]
-    API --> K[(Kafka)]
+    UI[React control tower] -->|same-origin API| API[FastAPI]
+    API -->|publish telemetry| K[Kafka]
     K --> W[Telemetry worker]
-    W --> PG
+    W --> DB[(PostgreSQL)]
     W --> Q[(Qdrant SOP index)]
-    W --> L[Deterministic / Groq / OpenAI-compatible provider]
-    L --> W
-    API & W --> P[Prometheus]
-    API & W --> J[OpenTelemetry / Jaeger]
-    P --> G[Grafana]
+    Q --> R[Bounded recommendation]
+    W --> R
+    R --> G[Deterministic governance]
+    G --> H{Human authorization}
+    H -->|approved| C[Idempotent command]
+    H -->|rejected| A[Audit event]
+    C --> S[Simulated action]
+    S --> A
+    API --> DB
 ```
 
-See the [authoritative architecture](docs/architecture/target-architecture.md) for trust boundaries and failure behavior.
+FastAPI and the worker are separate process entry points within a modular monolith. PostgreSQL is the authoritative workflow store, Kafka carries telemetry events, and Qdrant supplies versioned SOP evidence. Prometheus metrics, structured logs, and OpenTelemetry traces observe the boundaries without persisting prompts, credentials, SOP text, or incident payloads.
+
+See the [authoritative architecture](docs/architecture/target-architecture.md) for component responsibilities, trust boundaries, and failure behavior.
+
+## Decision authority model
+
+| Boundary | Produces | Authority |
+|---|---|---|
+| Evidence and retrieval | Incident facts and applicable SOP chunks | Trusted inputs, not a decision |
+| Recommendation provider | Bounded proposed action and rationale | Advisory only |
+| Deterministic governance | Allowed, blocked, or approval-required result | Authoritative policy |
+| Human reviewer | Approval or rejection with rationale | Consequential authorization |
+| Command adapter | Idempotent simulated result | Executes only an authorized command |
+
+`HOLD_SHIPMENT` always requires human approval. An active governance kill switch prevents command creation regardless of model output.
+
+## Key capabilities
+
+- Manual-commit Kafka processing with dead-letter handling.
+- Deterministic breach policy and duplicate/stale telemetry handling.
+- Transactional PostgreSQL workflow state and append-only, hash-linked audit history.
+- Versioned SOP ingestion and effective-date retrieval through Qdrant.
+- Strict provider JSON Schema, citation allowlists, bounded requests, and safe error metadata.
+- Deterministic fallback, circuit breaking, expiry enforcement, and provider-neutral configuration.
+- Role-checked approval, self-approval prevention, and idempotency conflict detection.
+- React control tower with runtime-validated API responses and explicit unavailable states.
+- Prometheus/Grafana metrics and OpenTelemetry/Jaeger tracing with privacy controls.
+- Deterministic offline evaluation covering 16 governance and safety scenarios.
 
 ## Technology stack
 
 | Area | Technologies |
 |---|---|
 | Frontend | React 19, TypeScript 6, Vite, TanStack Query, Zod, Recharts, Vitest, Testing Library, jest-axe |
-| Backend | Python 3.12, FastAPI, Pydantic, SQLAlchemy async, Alembic, httpx, uv |
-| Data | PostgreSQL 16, Kafka 3.9 KRaft, Qdrant 1.19 |
-| AI / retrieval | Deterministic fallback, OpenAI-compatible boundary, Groq, optional OpenAI, deterministic embeddings |
-| Governance | Closed action schemas, deterministic policy, expiry, kill switch, human approval, idempotency |
+| Backend | Python 3.12, FastAPI, Pydantic, async SQLAlchemy, Alembic, httpx, uv |
+| Data and messaging | PostgreSQL 16, Kafka 3.9 in KRaft mode, Qdrant 1.19 |
+| AI and retrieval | Deterministic provider, OpenAI-compatible provider boundary, optional Groq/OpenAI, deterministic embeddings |
+| Governance | Closed action types, versioned policy, expiry, kill switch, human approval, idempotency |
 | Observability | Prometheus, Grafana, OpenTelemetry, Jaeger, correlated structured logs |
 
-Redis is intentionally not used: PostgreSQL owns durable workflow state, Kafka owns event delivery, and the current local workload does not justify another state system.
+Redis is intentionally absent. PostgreSQL owns durable state and idempotency, while Kafka owns event delivery; the demonstrated workload does not justify another state system.
 
-## End-to-end breach scenario
-
-1. Demo Lab publishes synthetic out-of-range readings to Kafka.
-2. The worker applies the versioned breach policy and persists telemetry.
-3. A durable incident and immutable evidence snapshot are created.
-4. Effective SOP chunks are retrieved from Qdrant.
-5. The deterministic provider—or an explicitly enabled external provider—creates advisory output.
-6. Local schema, action, evidence, citation, expiry, and provenance checks run.
-7. Deterministic governance requires approval for `HOLD_SHIPMENT`.
-8. A dispatcher reviews the evidence and approves or rejects.
-9. Approval creates one idempotent command and a simulated hold result.
-10. The sequence appears in the audit timeline and observability views.
-
-## Control-tower routes
+## Control-tower interface
 
 | Route | Purpose |
 |---|---|
-| `/` | Command Center operational overview |
-| `/incidents` | Incident queue and prioritization |
-| `/investigation/:incidentId` | Evidence, recommendation, governance, approval, command, and audit trail |
-| `/governed-ai` | Recommendation boundary and provider state |
-| `/observability` | Local health, metrics, dashboards, and traces |
-| `/demo-lab` | Synthetic scenarios through the Kafka-backed workflow |
+| `/` | Command Center overview and service posture |
+| `/incidents` | Incident queue, filtering, and prioritization |
+| `/investigation/:incidentId` | Evidence, recommendation, governance, approval, command, and audit timeline |
+| `/governed-ai` | Recommendation lifecycle and authority boundaries |
+| `/observability` | Local metrics, dashboards, alerts, and trace links |
+| `/demo-lab` | Synthetic scenarios executed through the Kafka-backed workflow |
 
-## Local setup — Windows PowerShell
+The frontend supports a clearly identified browser-local fixture mode for interface review and an API mode for the integrated demonstration. API mode does not silently substitute fixture data when the backend is unavailable.
 
-Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/), Node.js/npm, Docker Desktop, and Docker Compose.
+## Local quick start
+
+### Requirements
+
+- Windows PowerShell
+- Python 3.12
+- [uv](https://docs.astral.sh/uv/)
+- Node.js and npm
+- Docker Desktop with Docker Compose
 
 ```powershell
 git clone https://github.com/sa-rehman1/coldchain-sentinel.git
@@ -119,55 +155,71 @@ npm ci
 cd ..
 ```
 
-The copied `.env` contains local-only placeholders. Keep it ignored and never commit provider keys.
+The copied `.env` contains local-only placeholders. It is ignored by Git and must never contain production credentials.
 
-### Deterministic zero-cost demo
+## Configuration and provider modes
 
-The safe default uses no external model and downloads no embedding model:
+| Mode | Configuration | Network behavior |
+|---|---|---|
+| Deterministic | `LLM_PROVIDER=deterministic` and `LLM_LIVE_CALLS_ENABLED=false` | No external model request; no embedding download |
+| Groq | Explicit `-EnableGroq` launcher switch plus a server-side key in ignored `.env` | Optional external request path |
+| OpenAI | Provider configuration supported and offline-tested | Disabled by the launcher and never enabled automatically |
+
+Provider credentials remain server-side. The browser receives only bounded application responses and never receives an API key or authorization header.
+
+## Deterministic demonstration
+
+The supported zero-cost path starts the API, worker, frontend, PostgreSQL, Kafka, and Qdrant; applies migrations; ingests the SOP corpus; and waits for health checks:
 
 ```powershell
 .\scripts\demo.ps1 -Action Start -Observability
 ```
 
-If another local PostgreSQL instance already owns port 5432, select an unused host port without
-changing the internal Compose network: `.\scripts\demo.ps1 -Action Start -Observability -PostgresHostPort 15432`.
+If another PostgreSQL instance owns host port 5432, change only the host binding:
 
-Open `http://127.0.0.1:4173`, choose **Dispatcher**, open **Demo Lab**, and run **Sustained temperature breach**. Stop services without deleting containers or volumes:
+```powershell
+.\scripts\demo.ps1 -Action Start -Observability -PostgresHostPort 15432
+```
+
+Open `http://127.0.0.1:4173`, select **Dispatcher**, open **Demo Lab**, and run **Sustained temperature breach**. Follow the created incident through evidence, recommendation, governance, approval, command, simulated action, and audit history.
+
+Stop services without deleting containers, volumes, or data:
 
 ```powershell
 .\scripts\demo.ps1 -Action Stop -Observability
 ```
 
-### Optional Groq demonstration
+## Optional Groq demonstration
 
-Store `GROQ_API_KEY` only in ignored `.env`, review account limits, then explicitly opt in:
+Store `GROQ_API_KEY` only in the ignored `.env`, review the provider account limits, and opt in explicitly:
 
 ```powershell
 .\scripts\demo.ps1 -Action Start -EnableGroq
 ```
 
-The launcher never prints the key. Disable calls by stopping and restarting without `-EnableGroq`. External output remains advisory.
+The launcher does not print the key. External output remains advisory and is subject to the same local validation, governance, approval, command, and audit boundaries. The deterministic workflow remains the recommended recording path.
 
-OpenAI support is optional, server-side, disabled, and validated only with mocked offline tests. No OpenAI live request was made during development validation.
+## Testing and evaluation
 
-## Verified development quality
+Current development-validation results:
 
-These are development-validation results, not production traffic or reliability metrics:
-
-- **109** non-live backend tests passed with **86.96%** backend coverage.
-- **50** frontend/component/accessibility tests passed.
+- **109** non-live backend tests passed with **87.09%** branch coverage.
+- **115** tests passed in the containerized PostgreSQL/Qdrant suite, with 3 explicitly gated tests skipped.
+- **50** frontend component and accessibility tests passed.
 - **16/16** deterministic evaluation scenarios passed.
-- Strict mypy, Ruff, TypeScript, ESLint, prompt/schema drift, packaging, Compose, environment, and credential checks passed.
-- One controlled synthetic Groq validation passed with one request and zero retries.
-- Zero OpenAI live requests were made.
+- Ruff, strict mypy, ESLint, strict TypeScript, prompt/schema drift, Alembic drift, packaging, Compose, environment, and credential checks passed.
+- One controlled synthetic Groq request was validated during the provider milestone; no OpenAI live request has been made.
+
+These are development checks, not production traffic, availability, or business-impact metrics.
 
 ```powershell
 uv lock --check
 uv run ruff format --check .
 uv run ruff check .
 uv run mypy
-uv run pytest -m "not live_groq and not live_openai"
+uv run pytest -m "not integration and not e2e and not live_groq and not live_openai"
 uv run python scripts/run_evaluations.py
+
 cd frontend
 npm run lint
 npm run typecheck
@@ -175,40 +227,79 @@ npm test -- --run
 npm run build
 ```
 
-## Security and privacy controls
+## Security and trust boundaries
 
-- Provider keys remain server-side and in ignored local configuration only.
-- Prompts, unrestricted provider responses, authorization headers, SOP text, and incident payloads are excluded from logs, traces, and metrics.
-- Metrics use bounded labels; logs allowlist fields and redact credential-shaped values.
-- External calls, model downloads, tracing export, and observability services are disabled or optional by default.
-- AI cannot approve recommendations, bypass policy, create commands, or execute actions.
+- External calls are disabled by default and require explicit process configuration.
+- Provider keys are read from server-side environment variables and excluded from frontend assets.
+- Recommendation output uses a strict schema and closed action set.
+- SOP and incident citations must resolve to identifiers supplied in the current request context.
+- Application code owns provenance, expiry, correlation, and provider metadata.
+- Deterministic governance re-evaluates every recommendation and fails closed.
+- Human identity, role, rationale, expiry, and idempotency are checked server-side.
+- Metrics use bounded labels; logs and traces exclude sensitive request and response material.
+- Command execution is simulated and cannot be triggered directly by a provider.
+
+Threat and boundary details are documented in the [prompt-injection threat model](docs/security/prompt-injection-threat-model.md) and [observability trust boundaries](docs/security/observability-trust-boundaries.md).
+
+## Observability
+
+The optional `observability` Compose profile provides:
+
+- Prometheus metrics for bounded workflow outcomes and latency;
+- provisioned Grafana dashboards and alert rules;
+- OpenTelemetry propagation across HTTP and Kafka;
+- Jaeger trace inspection on localhost;
+- correlated JSON logs with credential-shaped value redaction.
+
+Observability services bind to localhost and do not receive prompts, unrestricted provider responses, SOP contents, authorization headers, or raw incident payloads.
 
 ## Repository structure
 
 ```text
-src/coldchain/       domain, application, API, providers, retrieval, persistence, worker
-frontend/            React control tower and typed API boundary
+src/coldchain/
+  api/              FastAPI composition, routes, middleware, and transport schemas
+  application/      workflow services and application-facing protocols
+  domain/           framework-independent policy and workflow models
+  infrastructure/   PostgreSQL and Kafka adapters
+  ai/               provider contract, strict output models, and prompt assets
+  retrieval/        SOP corpus loading, chunking, embeddings, and Qdrant access
+  governance/       deterministic governance engine
+  observability/    metrics, logging, and tracing boundaries
+  workers/          Kafka telemetry worker entry point
+frontend/            feature-oriented React control tower
+tests/               unit, integration, live opt-in, and Docker E2E tests
 contracts/           versioned JSON Schemas and examples
-alembic/             PostgreSQL migrations
+alembic/             immutable PostgreSQL migration history
 sop/                 authored ColdChain Sentinel SOP corpus
 evaluations/         deterministic scenarios and thresholds
 observability/       Prometheus and Grafana configuration
-scripts/             validation, ingestion, evaluation, and demo tooling
+scripts/             validation, ingestion, evaluation, and demo workflows
 docs/                architecture, security, operations, and portfolio material
 ```
 
-## Limitations and production hardening
+## Documentation
 
-The system uses synthetic data, local demonstration identities, localhost services, deterministic embeddings, and a simulated action adapter. Production work requires enterprise identity/RBAC, managed secrets, TLS and network policy, real telemetry/TMS integrations, transactional delivery guarantees, retention/privacy review, provider contracts and budgets, load/failure/recovery testing, SLOs, HA, backups, and deployment-specific regulatory validation.
-
-## Further reading
-
-- [Final architecture](docs/architecture/target-architecture.md)
-- [Integrated demo guide](docs/demo/milestone-2b-walkthrough.md)
+- [Authoritative architecture](docs/architecture/target-architecture.md)
+- [Integrated demonstration guide](docs/demo/milestone-2b-walkthrough.md)
+- [Evaluation methodology](docs/guides/evaluation-methodology.md)
+- [Provider migration guide](docs/guides/provider-migration-groq-to-openai.md)
 - [Demo recording script](docs/portfolio/demo-recording-script.md)
-- [Technical blog draft](docs/portfolio/blog-draft.md)
+- [Technical article draft](docs/portfolio/blog-draft.md)
 - [Interview and recruiter guide](docs/portfolio/interview-guide.md)
 - [Resume and portfolio material](docs/portfolio/resume-and-portfolio.md)
-- [Screenshot plan](docs/portfolio/screenshot-plan.md)
 
-*Demo media will be added after the final recording; no placeholder screenshot or video link is committed.*
+Architecture decision records and milestone documents preserve historical context. This README and the target architecture document describe the current system.
+
+## Current limitations
+
+- All shipment, identity, and incident data is synthetic.
+- The local identity adapter is not production authentication.
+- Infrastructure is single-node and localhost-only.
+- Deterministic embeddings prioritize reproducibility over semantic quality.
+- The action adapter records a simulated result and contacts no carrier or warehouse.
+- The audit chain is append-only in PostgreSQL but is not an external immutable ledger.
+- No production load, availability, recovery, or regulatory claims are made.
+
+## Production-hardening roadmap
+
+A production deployment would require enterprise identity and RBAC, managed secrets, TLS and network policy, real telemetry and transportation-management integrations, transactional outbox/inbox delivery, formal data classification and retention, immutable audit storage, provider qualification and budgets, load and failure testing, SLOs, backups, high availability, disaster recovery, and deployment-specific regulatory validation.

@@ -3,7 +3,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { ArrowRight, ChevronLeft, ChevronRight, Columns3, Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { usePrototype } from '../../app/PrototypeContext';
+import { useControlTowerContext } from '../../app/ControlTowerContext';
 import { Button, EmptyState } from '../../components/ui/Primitives';
 import { GovernanceIndicator, SeverityIndicator, WorkflowIndicator } from '../../components/ui/StatusIndicators';
 import type { Incident } from '../../data/contracts';
@@ -37,7 +37,7 @@ const columns = columnHelper.columns([
 
 export function IncidentQueue() {
   const { data = [], isLoading, isError, error } = useIncidents();
-  const { simulatedIncidents, displayMode } = usePrototype();
+  const { simulatedIncidents, displayMode } = useControlTowerContext();
   const [params, setParams] = useSearchParams();
   const [density, setDensity] = useState<'compact' | 'comfortable'>('compact');
   const [selected, setSelected] = useState<Incident | null>(null);
@@ -57,7 +57,7 @@ export function IncidentQueue() {
   const table = useTable({ features, data: filtered, columns, initialState: { pagination: { pageIndex: 0, pageSize: 6 }, sorting: [{ id: 'createdMinutesAgo', desc: false }] } });
   const updateParam = (key: string, value: string) => { const next = new URLSearchParams(params); if (value === 'all' || value === '') next.delete(key); else next.set(key, value); void setParams(next); };
 
-  if (displayMode === 'disconnected') return <div className="page"><EmptyState title="Data source disconnected" detail="The prototype is showing the network-loss state. Restore fixtures from Demo Lab to reconnect." /></div>;
+  if (displayMode === 'disconnected') return <div className="page"><EmptyState title="Data source disconnected" detail="Fixture mode is showing the network-loss state. Restore fixtures from Demo Lab to reconnect." /></div>;
   if (isError && dataSourceMode === 'api') return <div className="page"><EmptyState title="Incident service disconnected" detail={error instanceof Error ? error.message : 'The local API is unavailable.'} /></div>;
 
   return <div className={`page queue-page density-${density}`}>
@@ -71,7 +71,7 @@ export function IncidentQueue() {
       <label className={`quick-filter ${approvalOnly ? 'active' : ''}`}><input type="checkbox" checked={approvalOnly} onChange={(event) => updateParam('approval', event.target.checked ? 'true' : '')} />Approval required</label>
     </div>
     <div className="table-shell">
-      {isLoading ? <div className="skeleton skeleton-table" /> : filtered.length === 0 ? <EmptyState title="No incidents found" detail="Change the current filters or restore the prototype fixtures." /> : <div className="table-scroll"><table><thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} onClick={header.column.getToggleSortingHandler()} className={header.column.getCanSort() ? 'sortable' : ''}><table.FlexRender header={header} />{header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : ''}</th>)}</tr>)}</thead><tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className={selected?.id === row.original.id ? 'selected' : ''} tabIndex={0} onClick={() => setSelected(row.original)} onKeyDown={(event) => { if (event.key === 'Enter') setSelected(row.original); }}>{row.getVisibleCells().map((cell) => <td key={cell.id}><table.FlexRender cell={cell} /></td>)}</tr>)}</tbody></table></div>}
+      {isLoading ? <div className="skeleton skeleton-table" /> : filtered.length === 0 ? <EmptyState title="No incidents found" detail="Change the current filters or restore the demo fixtures." /> : <div className="table-scroll"><table><thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} onClick={header.column.getToggleSortingHandler()} className={header.column.getCanSort() ? 'sortable' : ''}><table.FlexRender header={header} />{header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : ''}</th>)}</tr>)}</thead><tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className={selected?.id === row.original.id ? 'selected' : ''} tabIndex={0} onClick={() => setSelected(row.original)} onKeyDown={(event) => { if (event.key === 'Enter') setSelected(row.original); }}>{row.getVisibleCells().map((cell) => <td key={cell.id}><table.FlexRender cell={cell} /></td>)}</tr>)}</tbody></table></div>}
       <footer className="table-footer"><span>Page {table.state.pagination.pageIndex + 1} of {table.getPageCount()}</span><div><Button variant="ghost" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} aria-label="Previous page"><ChevronLeft size={16} /></Button><Button variant="ghost" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} aria-label="Next page"><ChevronRight size={16} /></Button></div></footer>
     </div>
     {selected && <div className="drawer-backdrop" onMouseDown={() => setSelected(null)}><aside className="preview-drawer" aria-label="Investigation preview" onMouseDown={(event) => event.stopPropagation()}><header><div><SeverityIndicator severity={selected.severity} /><h2>{selected.id}</h2><p>{selected.title}</p></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close preview"><X size={18} /></button></header><div className="drawer-content"><div className="drawer-temp"><strong>{temperature(selected.temperature)}</strong><span>Allowed {range(selected.allowedMin, selected.allowedMax)}</span></div><dl><div><dt>Shipment</dt><dd>{selected.shipment}</dd></div><div><dt>Product</dt><dd>{present(selected.product)}</dd></div><div><dt>Sensor</dt><dd>{present(selected.sensor)}</dd></div><div><dt>Breach duration</dt><dd>{minutes(selected.breachMinutes)}</dd></div><div><dt>Governance</dt><dd><GovernanceIndicator decision={selected.governance} /></dd></div><div><dt>Reviewer</dt><dd>{selected.reviewer ?? 'Unassigned'}</dd></div></dl><div className="drawer-notice"><strong>Preview only</strong><span>Consequential decisions are available only in the full investigation workspace.</span></div></div><footer><Button variant="primary" onClick={() => navigate(`/investigation/${selected.id}`)}>Open investigation <ArrowRight size={15} /></Button><Button variant="ghost" onClick={() => setSelected(null)}>Close</Button></footer></aside></div>}

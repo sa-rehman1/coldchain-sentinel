@@ -1,5 +1,7 @@
 # Milestone 1C: local observability and evaluation
 
+> Historical implementation record. See the [target architecture](target-architecture.md) for the current system.
+
 Milestone 1C adds a local, portfolio-sized observability plane without changing the authority
 boundary established in Milestone 1B. Prometheus collects bounded application metrics, Grafana
 loads two provisioned dashboards, and Jaeger receives OTLP/HTTP traces directly from the API and

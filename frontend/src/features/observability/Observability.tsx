@@ -27,7 +27,7 @@ export function Observability() {
     <Panel title="Local observability tools" eyebrow="No incident payloads are transmitted"><div className="tool-links">{[['Jaeger','http://localhost:16687'],['Prometheus','http://localhost:19090'],['Grafana','http://localhost:13001']].map(([label,url]) => <Button key={label} variant="secondary" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>{label}<ExternalLink size={13} /></Button>)}</div></Panel>
   </div>;
   return <div className="page observability-page observability-polished">
-    <div className="page-intro compact"><div><p>Reliability posture</p><h1>Observability</h1><span>Local metrics, traces and alerts with safe telemetry boundaries</span></div><div className="live-indicator"><span />Prototype snapshot · refresh paused</div></div>
+    <div className="page-intro compact"><div><p>Reliability posture</p><h1>Observability</h1><span>Local metrics, traces and alerts with safe telemetry boundaries</span></div><div className="live-indicator"><span />Demonstration snapshot · refresh paused</div></div>
     <div className="internal-tabs" role="tablist" aria-label="Observability views">{tabs.map((tab) => <button role="tab" aria-selected={activeTab === tab} key={tab} onClick={() => setActiveTab(tab)}>{tab}</button>)}</div>
     {activeTab === 'Overview' && <Overview />}
     {activeTab === 'Services' && <section role="tabpanel" aria-label="Services"><Panel title="Service health" eyebrow="Eight local dependencies" action={<span className="secondary-stat">Last check · just now</span>}>{data && <ServiceHealthTable services={data.services} />}</Panel></section>}

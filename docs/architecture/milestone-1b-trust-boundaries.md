@@ -1,5 +1,7 @@
 # Milestone 1B data flow and trust boundaries
 
+> Historical implementation record. See the [target architecture](target-architecture.md) for the current system.
+
 1. Kafka telemetry enters as untrusted input and is contract-validated.
 2. Deterministic breach policy creates incident facts and immutable evidence.
 3. The embedding provider converts bounded text; it has no authority.

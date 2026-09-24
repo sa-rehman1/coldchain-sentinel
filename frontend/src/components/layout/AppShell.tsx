@@ -2,7 +2,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { Bell, Search, ShieldCheck, UserRound } from 'lucide-react';
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { localIdentities, usePrototype, type PrototypeNotification } from '../../app/PrototypeContext';
+import { localIdentities, useControlTowerContext, type ControlTowerNotification } from '../../app/ControlTowerContext';
 import { dataSourceMode } from '../../data/source';
 import { useIncidents } from '../../hooks/useControlTower';
 import { Button, Menu, MenuItem, Modal, StatusDot } from '../ui/Primitives';
@@ -19,7 +19,7 @@ const navigation = [
 export function AppShell({ children }: { children: ReactNode }) {
   const [query, setQuery] = useState('');
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const { persona, setPersona, toast, notifications, readNotificationIds, markNotificationRead, markAllNotificationsRead } = usePrototype();
+  const { persona, setPersona, toast, notifications, readNotificationIds, markNotificationRead, markAllNotificationsRead } = useControlTowerContext();
   const { data: incidents = [] } = useIncidents();
   const navigate = useNavigate();
   const displayedNotifications = dataSourceMode === 'api' ? deriveNotifications(incidents, readNotificationIds) : notifications;
@@ -53,7 +53,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <DropdownMenu.Arrow className="notification-arrow" />
             </DropdownMenu.Content></DropdownMenu.Portal>
           </DropdownMenu.Root>
-          <div className="header-system-status" title="All local prototype services available"><StatusDot state="healthy" /><span>Operational</span></div>
+          <div className="header-system-status" title="All local demonstration services available"><StatusDot state="healthy" /><span>Operational</span></div>
           <Menu label={<><span className="reviewer-avatar" aria-hidden="true">{initials}</span><span className="reviewer-name"><small>Local demonstration identity</small>{persona}</span><UserRound className="reviewer-fallback" size={17} /></>}>
             {(Object.keys(localIdentities) as Array<keyof typeof localIdentities>).map((role) => <MenuItem className="dropdown-item" key={role} onSelect={() => setPersona(role)}>{role}{role === persona && <ShieldCheck size={15} />}</MenuItem>)}
           </Menu>
@@ -66,9 +66,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   </div>;
 }
 
-function deriveNotifications(incidents: import('../../data/contracts').Incident[], readIds: ReadonlySet<string>): PrototypeNotification[] {
+function deriveNotifications(incidents: import('../../data/contracts').Incident[], readIds: ReadonlySet<string>): ControlTowerNotification[] {
   return incidents.flatMap((incident) => {
-    const items: PrototypeNotification[] = [];
+    const items: ControlTowerNotification[] = [];
     if (incident.severity === 'critical' && incident.state !== 'completed') items.push({ id: `critical-${incident.id}`, title: 'Critical temperature breach', message: `Shipment ${incident.shipment} requires attention.`, time: `${incident.createdMinutesAgo} minutes ago`, severity: 'critical', action: 'Open incident', href: `/investigation/${incident.id}`, read: readIds.has(`critical-${incident.id}`) });
     const expiry = incident.recommendationExpiresAt ? Date.parse(incident.recommendationExpiresAt) - Date.now() : Number.POSITIVE_INFINITY;
     if (expiry > 0 && expiry <= 10 * 60_000) items.push({ id: `expiry-${incident.id}`, title: 'Approval expiring soon', message: `The recommendation for ${incident.id} expires soon.`, time: 'Current', severity: 'warning', action: 'Review decision', href: `/investigation/${incident.id}#decision`, read: readIds.has(`expiry-${incident.id}`) });

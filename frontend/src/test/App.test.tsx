@@ -4,7 +4,7 @@ import { axe } from 'jest-axe';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { App } from '../app/App';
-import { PrototypeProvider, type Persona } from '../app/PrototypeContext';
+import { ControlTowerProvider, type Persona } from '../app/ControlTowerContext';
 import { ChartLegend, ChartTooltip } from '../components/data-display/ChartSupport';
 import { ServiceHealthTable } from '../components/data-display/ServiceHealthTable';
 import { GovernanceIndicator, SeverityIndicator } from '../components/ui/StatusIndicators';
@@ -13,10 +13,10 @@ import { dashboard, incidents, scenarios } from '../data/fixtures';
 import { deriveIncidentSummary } from '../data/selectors/incidents';
 
 function renderApp(route = '/', persona: Persona = 'Dispatcher', initialDisplayMode: 'default' | 'empty' | 'disconnected' | 'permission-denied' = 'default') {
-  return render(<MemoryRouter initialEntries={[route]}><PrototypeProvider initialPersona={persona} initialDisplayMode={initialDisplayMode}><App /></PrototypeProvider></MemoryRouter>);
+  return render(<MemoryRouter initialEntries={[route]}><ControlTowerProvider initialPersona={persona} initialDisplayMode={initialDisplayMode}><App /></ControlTowerProvider></MemoryRouter>);
 }
 
-describe('control tower prototype', () => {
+describe('control tower interface', () => {
   it('renders the application shell and command center', async () => {
     const { container } = renderApp();
     expect(screen.getByText('ColdChain Sentinel')).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe('control tower prototype', () => {
     expect(screen.getByText('Preview only')).toBeInTheDocument();
   });
 
-  it('opens the consequential approval dialog and records a prototype decision', async () => {
+  it('opens the consequential approval dialog and records a fixture decision', async () => {
     const user = userEvent.setup();
     renderApp('/investigation/INC-2481');
     await user.click(await screen.findByRole('button', { name: 'Approve hold' }));
@@ -158,7 +158,7 @@ describe('control tower prototype', () => {
     expect(within(dialog).getByText('Confirm shipment hold')).toBeInTheDocument();
     expect(within(dialog).getByText(/idempotent simulated command/i)).toBeInTheDocument();
     await user.type(within(dialog).getByPlaceholderText(/concise operational rationale/i), 'Reviewed sensor evidence and SOP guidance');
-    await user.click(within(dialog).getByRole('button', { name: 'Confirm prototype decision' }));
+    await user.click(within(dialog).getByRole('button', { name: 'Confirm fixture decision' }));
     expect(await screen.findByText('Approved for simulated execution')).toBeInTheDocument();
   });
 
@@ -166,7 +166,7 @@ describe('control tower prototype', () => {
     const user = userEvent.setup();
     renderApp('/investigation/INC-2481');
     await user.click(await screen.findByRole('button', { name: 'Reject' }));
-    const confirm = screen.getByRole('button', { name: 'Confirm prototype decision' });
+    const confirm = screen.getByRole('button', { name: 'Confirm fixture decision' });
     expect(confirm).toBeDisabled();
     await user.type(screen.getByPlaceholderText(/concise operational rationale/i), 'Sensor conflict needs review');
     expect(confirm).toBeEnabled();
@@ -185,7 +185,7 @@ describe('control tower prototype', () => {
     const card = (await screen.findByText('Immediate critical breach')).closest('article')!;
     await user.click(within(card).getByRole('button', { name: 'Run' }));
     expect(screen.getByText('Guided simulation')).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Restore prototype data' }));
+    await user.click(screen.getByRole('button', { name: 'Restore demo fixtures' }));
     expect(screen.queryByText('Guided simulation')).not.toBeInTheDocument();
   });
 
@@ -272,7 +272,7 @@ describe('control tower prototype', () => {
     expect(screen.getByRole('button', { name: 'Notifications, 2 unread' })).toBeInTheDocument();
   });
 
-  it('restoring prototype fixtures resets notification state', async () => {
+  it('restoring demo fixtures resets notification state', async () => {
     const user = userEvent.setup();
     renderApp('/demo-lab');
     screen.getByRole('button', { name: 'Notifications, 3 unread' }).focus();
@@ -280,7 +280,7 @@ describe('control tower prototype', () => {
     await user.click(screen.getByRole('button', { name: 'Mark all as read' }));
     await user.keyboard('{Escape}');
     expect(screen.getByRole('button', { name: 'Notifications, 0 unread' })).toBeInTheDocument();
-    await user.click(screen.getAllByRole('button', { name: 'Restore prototype data' })[0]!);
+    await user.click(screen.getAllByRole('button', { name: 'Restore demo fixtures' })[0]!);
     expect(screen.getByRole('button', { name: 'Notifications, 3 unread' })).toBeInTheDocument();
   });
 
@@ -306,7 +306,7 @@ describe('control tower prototype', () => {
     await waitFor(() => expect(screen.getByText('Incident created')).toBeInTheDocument(), { timeout: 3000 });
     expect(screen.getByRole('button', { name: /Open incident investigation/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Run again' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Restore prototype data' }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Restore demo fixtures' }).length).toBeGreaterThan(0);
   });
 
   it('renders shared severity and governance indicators with visible accessible text', () => {
@@ -325,7 +325,7 @@ describe('control tower prototype', () => {
     await user.type(globalSearch, 'INC-2481{Enter}');
     await user.click(await screen.findByRole('button', { name: 'Approve hold' }));
     await user.type(screen.getByPlaceholderText(/concise operational rationale/i), 'Reviewed evidence and prior command state');
-    await user.click(screen.getByRole('button', { name: 'Confirm prototype decision' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm fixture decision' }));
     expect((await screen.findAllByText(/idempotent command already exists/i)).length).toBeGreaterThan(0);
   });
 
@@ -351,7 +351,7 @@ describe('control tower prototype', () => {
   });
 });
 
-describe('prototype safety and data boundary', () => {
+describe('fixture safety and data boundary', () => {
   it('renders differentiated high-contrast chart tooltip values and legend labels', () => {
     render(<><ChartLegend items={[{ label: 'Active incidents', color: '#5BA7A7' }, { label: 'Temperature breaches', color: '#E16464' }, { label: 'Awaiting review', color: '#E6A64C' }]} /><ChartTooltip active label="12:00" payload={[{ dataKey: 'incidents', name: 'Active incidents', value: 8, color: '#5BA7A7' }, { dataKey: 'breaches', name: 'Temperature breaches', value: 3, color: '#E16464' }, { dataKey: 'awaitingReview', name: 'Awaiting review', value: 2, color: '#E6A64C' }]} /></>);
     const legend = screen.getByLabelText('Chart legend');
