@@ -7,6 +7,7 @@ export const useIncidents = () => useQuery({ queryKey: ['incidents'], queryFn: (
 export const useInvestigation = (id: string) => useQuery({ queryKey: ['investigation', id], queryFn: ({ signal }) => controlTowerDataSource.getInvestigation(id, signal), refetchInterval: controlTowerDataSource.mode === 'api' ? 3_000 : false });
 export const useScenarios = (identity?: LocalIdentity) => useQuery({ queryKey: ['scenarios', identity?.actorId], queryFn: ({ signal }) => controlTowerDataSource.getScenarios(identity, signal) });
 export const useHealth = () => useQuery({ queryKey: ['health'], queryFn: ({ signal }) => controlTowerDataSource.getHealth(signal), refetchInterval: controlTowerDataSource.mode === 'api' ? 10_000 : false });
+export const useObservabilitySummary = () => useQuery({ queryKey: ['observability-summary'], queryFn: ({ signal }) => controlTowerDataSource.getObservabilitySummary(signal), refetchInterval: controlTowerDataSource.mode === 'api' ? 12_000 : false, refetchIntervalInBackground: false });
 export const useDemoRun = (runId: string | null, identity: LocalIdentity) => useQuery({
   queryKey: ['demo-run', runId],
   queryFn: ({ signal }) => {

@@ -29,7 +29,7 @@ from coldchain.retrieval.core import (
     SopDocument,
     chunk_document,
 )
-from coldchain.retrieval.corpus import load_corpus
+from coldchain.retrieval.corpus import load_corpus, resolve_trusted_citations
 
 
 def config(*, enabled: bool = True) -> ProviderConfig:
@@ -659,3 +659,52 @@ def test_provider_factory_is_offline_by_default(monkeypatch: pytest.MonkeyPatch)
     )
     assert isinstance(provider, RetrievalGroundedRecommendationProvider)
     assert provider._provider.config.live_calls_enabled is False
+
+
+def test_trusted_citation_resolution_enforces_effective_date() -> None:
+    chunk_id = "sopch_4c0e122c8d5338ae03c9f879"
+
+    assert resolve_trusted_citations((chunk_id,), as_of=date(2026, 9, 18)) == ()
+    resolved = resolve_trusted_citations((chunk_id,), as_of=date(2026, 9, 19))
+
+    assert len(resolved) == 1
+    assert resolved[0].document_id == "CCS-SOP-HOLD-001"
+    assert resolved[0].section_id == "HOLD-001-S1"
+    assert resolved[0].validation_status == "trusted"
+
+
+def test_demo_citation_applicability_is_distinct_relevant_and_server_owned() -> None:
+    chunks = {
+        chunk.section_id: chunk.chunk_id
+        for document in load_corpus()
+        for chunk in chunk_document(document)
+    }
+    section_ids = ("TEMP-001-S2", "EVID-001-S1", "HOLD-001-S1")
+    chunk_ids = tuple(chunks[section_id] for section_id in section_ids)
+    duplicated_provider_placeholder = {
+        chunk_id: "A generic duplicated provider placeholder." for chunk_id in chunk_ids
+    }
+
+    resolved = resolve_trusted_citations(
+        chunk_ids,
+        as_of=date(2026, 9, 19),
+        applicability=duplicated_provider_placeholder,
+    )
+
+    explanations = {citation.section_id: citation.why_applicable for citation in resolved}
+    assert explanations == {
+        "TEMP-001-S2": (
+            "This section defines how to respond to a sustained fresh-product temperature "
+            "breach and requires preserving the shipment pending review."
+        ),
+        "EVID-001-S1": (
+            "This section defines the telemetry, sensor, timing, sequence, and integrity "
+            "evidence required before a decision."
+        ),
+        "HOLD-001-S1": (
+            "This section requires authenticated dispatcher authorization for HOLD_SHIPMENT "
+            "and prevents the recommendation engine from executing it directly."
+        ),
+    }
+    assert len(set(explanations.values())) == 3
+    assert "generic duplicated provider placeholder" not in " ".join(explanations.values()).lower()

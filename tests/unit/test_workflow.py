@@ -8,6 +8,12 @@ import pytest
 
 from coldchain.ai.provider import OpenAICompatibleRecommendationProvider, ProviderConfig
 from coldchain.application.actions import SimulatedColdChainActionAdapter
+from coldchain.application.demo import DemoScenarioService
+from coldchain.application.demo_projection import (
+    DemoShipmentProjection,
+    demo_incident_reference,
+    demo_shipment_reference,
+)
 from coldchain.application.interfaces import Identity, ProcessingResult, WorkflowRepository
 from coldchain.application.recommendations import (
     DeterministicLocalRecommendationProvider,
@@ -161,6 +167,46 @@ async def test_breach_builds_evidence_recommendation_and_approval_governance() -
     assert evaluation.reason_codes == ("CLEARLY_UNSAFE_TEMPERATURE",)
     assert recommendation.non_authoritative is True
     assert governance.decision == "APPROVAL_REQUIRED"
+
+
+async def test_guided_sustained_breach_carries_typed_projection_and_trusted_citations() -> None:
+    repository = FakeRepository()
+    now = utc_now()
+    events = DemoScenarioService._events("sustained", now, uuid4(), uuid4())
+    repository.history = tuple(
+        TemperatureReading(
+            event.event_id,
+            event.occurred_at,
+            event.reading_sequence,
+            event.temperature_celsius,
+        )
+        for event in events[:2]
+    )
+
+    result = await TemperatureBreachWorkflow(
+        repository, DeterministicLocalRecommendationProvider()
+    ).process(events[-1], now=now)
+
+    assert result.incident_id is not None
+    assert repository.saved is not None
+    evaluation = cast(BreachEvaluation, repository.saved[1])
+    evidence = cast(EvidenceSnapshot, repository.saved[3])
+    recommendation = cast(Recommendation, repository.saved[4])
+    governance = cast(GovernanceEvaluation, repository.saved[5])
+    projection = DemoShipmentProjection.from_policy_inputs(evidence.policy_inputs)
+    assert evaluation.severity == "HIGH"
+    assert evaluation.inputs["upperThresholdCelsius"] == 8.0
+    assert projection is not None
+    assert projection.sample_interval_minutes == 1
+    assert projection.custody_verification == "Complete"
+    assert projection.shipment_reference == demo_shipment_reference(events[-1].shipment_id)
+    assert demo_incident_reference(result.incident_id).startswith("INC-DEMO-")
+    assert recommendation.provenance is not None
+    assert len(recommendation.provenance["citedChunkIds"]) == 3
+    assert recommendation.provenance["evidenceSufficient"] is True
+    assert governance.decision == "APPROVAL_REQUIRED"
+    assert governance.inputs["citationsRecognized"] is True
+    assert governance.inputs["humanApprovalRequired"] is True
 
 
 async def test_json_validation_failure_falls_back_without_executing_command(

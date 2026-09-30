@@ -19,20 +19,23 @@ const features = tableFeatures({
   paginatedRowModel: createPaginatedRowModel(),
 });
 const columnHelper = createColumnHelper<typeof features, Incident>();
+const reference = (incident: Incident): string => incident.reference ?? 'Not provided';
+const provided = (value: string | null | undefined): string => value ?? 'Not provided';
+const reviewer = (value: string | null | undefined): string => value ?? 'Unassigned';
 const columns = columnHelper.columns([
-  columnHelper.display({ id: 'select', header: 'Select', enableSorting: false, cell: ({ row }) => <input type="checkbox" aria-label={`Select ${row.original.id}`} onClick={(event) => event.stopPropagation()} /> }),
+  columnHelper.display({ id: 'select', header: 'Select', enableSorting: false, cell: ({ row }) => <input type="checkbox" aria-label={`Select ${reference(row.original)}`} onClick={(event) => event.stopPropagation()} /> }),
   columnHelper.accessor('severity', { header: 'Severity', cell: ({ row }) => <SeverityIndicator severity={row.original.severity} /> }),
-  columnHelper.accessor('id', { header: 'Incident', cell: ({ row }) => <div className="table-primary"><strong className="mono">{row.original.id}</strong><span>{row.original.title}</span></div> }),
-  columnHelper.accessor('shipment', { header: 'Shipment', cell: ({ getValue }) => <span className="mono">{String(getValue())}</span> }),
+  columnHelper.accessor('reference', { header: 'Incident', cell: ({ row }) => <div className="table-primary"><strong className="mono">{reference(row.original)}</strong><span>{row.original.title}</span></div> }),
+  columnHelper.accessor('shipment', { header: 'Shipment', cell: ({ getValue }) => <span className="mono">{provided(getValue())}</span> }),
   columnHelper.accessor('product', { header: 'Product' }),
-  columnHelper.accessor('sensor', { header: 'Sensor', cell: ({ getValue }) => <span className="mono">{String(getValue())}</span> }),
+  columnHelper.accessor('sensor', { header: 'Sensor', cell: ({ getValue }) => <span>{provided(getValue())}</span> }),
   columnHelper.accessor('temperature', { header: 'Temperature', cell: ({ row }) => <span className="queue-temperature"><strong className={row.original.severity === 'critical' ? 'text-critical' : ''}>{temperature(row.original.temperature)}</strong><small>{range(row.original.allowedMin, row.original.allowedMax)} allowed</small></span> }),
   columnHelper.accessor('breachMinutes', { header: 'Breach', cell: ({ getValue }) => minutes(getValue()) }),
   columnHelper.accessor('state', { header: 'Workflow', cell: ({ row }) => <WorkflowIndicator state={row.original.state} /> }),
   columnHelper.accessor('governance', { header: 'Governance', cell: ({ row }) => <GovernanceIndicator decision={row.original.governance} /> }),
   columnHelper.accessor('createdMinutesAgo', { header: 'Created', cell: ({ getValue }) => `${String(getValue())}m ago` }),
   columnHelper.display({ id: 'age', header: 'Age', enableSorting: false, cell: ({ row }) => `${Math.floor(row.original.createdMinutesAgo / 60)}h ${row.original.createdMinutesAgo % 60}m` }),
-  columnHelper.accessor('reviewer', { header: 'Reviewer', cell: ({ getValue }) => String(getValue() ?? 'Unassigned') }),
+  columnHelper.accessor('reviewer', { header: 'Reviewer', cell: ({ getValue }) => reviewer(getValue()) }),
 ]);
 
 export function IncidentQueue() {
@@ -50,7 +53,7 @@ export function IncidentQueue() {
   const approvalOnly = params.get('approval') === 'true';
 
   const filtered = useMemo(() => incidents.filter((incident) => {
-    const text = `${incident.id} ${incident.title} ${incident.shipment} ${incident.product} ${incident.sensor}`.toLowerCase();
+    const text = `${incident.reference ?? incident.id} ${incident.title} ${incident.shipment} ${incident.product ?? ''} ${incident.sensor ?? ''}`.toLowerCase();
     return text.includes(query.toLowerCase()) && (severity === 'all' || incident.severity === severity) && (state === 'all' || incident.state === state) && (governance === 'all' || incident.governance === governance) && (!approvalOnly || incident.governance === 'approval-required');
   }), [incidents, query, severity, state, governance, approvalOnly]);
 
@@ -74,6 +77,6 @@ export function IncidentQueue() {
       {isLoading ? <div className="skeleton skeleton-table" /> : filtered.length === 0 ? <EmptyState title="No incidents found" detail="Change the current filters or restore the demo fixtures." /> : <div className="table-scroll"><table><thead>{table.getHeaderGroups().map((group) => <tr key={group.id}>{group.headers.map((header) => <th key={header.id} onClick={header.column.getToggleSortingHandler()} className={header.column.getCanSort() ? 'sortable' : ''}><table.FlexRender header={header} />{header.column.getIsSorted() === 'asc' ? ' ↑' : header.column.getIsSorted() === 'desc' ? ' ↓' : ''}</th>)}</tr>)}</thead><tbody>{table.getRowModel().rows.map((row) => <tr key={row.id} className={selected?.id === row.original.id ? 'selected' : ''} tabIndex={0} onClick={() => setSelected(row.original)} onKeyDown={(event) => { if (event.key === 'Enter') setSelected(row.original); }}>{row.getVisibleCells().map((cell) => <td key={cell.id}><table.FlexRender cell={cell} /></td>)}</tr>)}</tbody></table></div>}
       <footer className="table-footer"><span>Page {table.state.pagination.pageIndex + 1} of {table.getPageCount()}</span><div><Button variant="ghost" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()} aria-label="Previous page"><ChevronLeft size={16} /></Button><Button variant="ghost" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()} aria-label="Next page"><ChevronRight size={16} /></Button></div></footer>
     </div>
-    {selected && <div className="drawer-backdrop" onMouseDown={() => setSelected(null)}><aside className="preview-drawer" aria-label="Investigation preview" onMouseDown={(event) => event.stopPropagation()}><header><div><SeverityIndicator severity={selected.severity} /><h2>{selected.id}</h2><p>{selected.title}</p></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close preview"><X size={18} /></button></header><div className="drawer-content"><div className="drawer-temp"><strong>{temperature(selected.temperature)}</strong><span>Allowed {range(selected.allowedMin, selected.allowedMax)}</span></div><dl><div><dt>Shipment</dt><dd>{selected.shipment}</dd></div><div><dt>Product</dt><dd>{present(selected.product)}</dd></div><div><dt>Sensor</dt><dd>{present(selected.sensor)}</dd></div><div><dt>Breach duration</dt><dd>{minutes(selected.breachMinutes)}</dd></div><div><dt>Governance</dt><dd><GovernanceIndicator decision={selected.governance} /></dd></div><div><dt>Reviewer</dt><dd>{selected.reviewer ?? 'Unassigned'}</dd></div></dl><div className="drawer-notice"><strong>Preview only</strong><span>Consequential decisions are available only in the full investigation workspace.</span></div></div><footer><Button variant="primary" onClick={() => navigate(`/investigation/${selected.id}`)}>Open investigation <ArrowRight size={15} /></Button><Button variant="ghost" onClick={() => setSelected(null)}>Close</Button></footer></aside></div>}
+    {selected && <div className="drawer-backdrop" onMouseDown={() => setSelected(null)}><aside className="preview-drawer" aria-label="Investigation preview" onMouseDown={(event) => event.stopPropagation()}><header><div><SeverityIndicator severity={selected.severity} /><h2>{reference(selected)}</h2><p>{selected.title}</p></div><button className="icon-button" onClick={() => setSelected(null)} aria-label="Close preview"><X size={18} /></button></header><div className="drawer-content"><div className="drawer-temp"><strong>{temperature(selected.temperature)}</strong><span>Allowed {range(selected.allowedMin, selected.allowedMax)}</span></div><dl><div><dt>Shipment</dt><dd>{provided(selected.shipment)}</dd></div><div><dt>Product</dt><dd>{present(selected.product)}</dd></div><div><dt>Sensor</dt><dd>{provided(selected.sensor)}</dd></div><div><dt>Breach duration</dt><dd>{minutes(selected.breachMinutes)}</dd></div><div><dt>Governance</dt><dd><GovernanceIndicator decision={selected.governance} /></dd></div><div><dt>Reviewer</dt><dd>{reviewer(selected.reviewer)}</dd></div></dl><div className="drawer-notice"><strong>Preview only</strong><span>Consequential decisions are available only in the full investigation workspace.</span></div></div><footer><Button variant="primary" onClick={() => navigate(`/investigation/${selected.id}`)}>Open investigation <ArrowRight size={15} /></Button><Button variant="ghost" onClick={() => setSelected(null)}>Close</Button></footer></aside></div>}
   </div>;
 }

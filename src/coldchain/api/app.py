@@ -18,19 +18,23 @@ from coldchain.api.errors import (
     workflow_conflict_handler,
 )
 from coldchain.api.middleware import CorrelationIdMiddleware
+from coldchain.api.routes.dashboard import router as dashboard_router
 from coldchain.api.routes.demo import router as demo_router
 from coldchain.api.routes.health import router as health_router
 from coldchain.api.routes.incidents import router as incidents_router
 from coldchain.api.routes.metrics import router as metrics_router
+from coldchain.api.routes.observability import router as observability_router
 from coldchain.application.actions import SimulatedColdChainActionAdapter
 from coldchain.application.demo import DemoRunReader, DemoScenarioService
 from coldchain.application.health import AiHealthService, ReadinessService
 from coldchain.application.interfaces import (
     ActionAdapter,
+    DashboardReader,
     ManagedTelemetryPublisher,
     TelemetryPublisher,
     WorkflowRepository,
 )
+from coldchain.application.observability import ObservabilitySummaryService
 from coldchain.application.workflow import (
     ApprovalService,
     AuthorizationError,
@@ -124,6 +128,11 @@ def create_app(
         if publisher is not None and repository is not None
         else None
     )
+    app.state.observability_service = ObservabilitySummaryService(
+        resolved,
+        database,
+        cast(DashboardReader | None, repository),
+    )
     app.add_middleware(CorrelationIdMiddleware)
     app.add_exception_handler(ServiceUnavailableError, service_unavailable_handler)  # type: ignore[arg-type]
     app.add_exception_handler(AuthorizationError, authorization_error_handler)  # type: ignore[arg-type]
@@ -132,8 +141,10 @@ def create_app(
     app.add_exception_handler(HTTPException, http_exception_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
     app.include_router(health_router, prefix=API_PREFIX)
+    app.include_router(dashboard_router, prefix=API_PREFIX)
     app.include_router(incidents_router, prefix=API_PREFIX)
     app.include_router(demo_router, prefix=API_PREFIX)
+    app.include_router(observability_router, prefix=API_PREFIX)
     app.include_router(metrics_router)
     return app
 

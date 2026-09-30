@@ -99,6 +99,24 @@ services:
         condition: service_healthy
     networks: [coldchain-internal]
 
+  showcase-seed:
+    profiles: ["demo"]
+    image: coldchain-sentinel:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    command: ["python", "-m", "coldchain.infrastructure.showcase"]
+    environment:
+      COLDCHAIN_ENVIRONMENT: local
+      COLDCHAIN_DATABASE_URL: postgresql+asyncpg://${COLDCHAIN_POSTGRES_USER}:${COLDCHAIN_POSTGRES_PASSWORD}@postgres:5432/${COLDCHAIN_POSTGRES_DB}
+      LLM_PROVIDER: deterministic
+      LLM_LIVE_CALLS_ENABLED: "false"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks: [coldchain-internal]
+
   api:
     image: coldchain-sentinel:local
     build:
@@ -115,6 +133,13 @@ services:
       COLDCHAIN_DEMO_MODE_ENABLED: ${COLDCHAIN_DEMO_MODE_ENABLED:-true}
       COLDCHAIN_OTEL_TRACING_ENABLED: ${COLDCHAIN_OTEL_TRACING_ENABLED:-false}
       COLDCHAIN_OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger:4318/v1/traces
+      COLDCHAIN_PROMETHEUS_URL: http://prometheus:9090
+      COLDCHAIN_GRAFANA_URL: http://grafana:3000
+      COLDCHAIN_JAEGER_URL: http://jaeger:16686
+      COLDCHAIN_LOCAL_PROMETHEUS_URL: ${COLDCHAIN_LOCAL_PROMETHEUS_URL:-http://127.0.0.1:19090}
+      COLDCHAIN_LOCAL_GRAFANA_URL: ${COLDCHAIN_LOCAL_GRAFANA_URL:-http://127.0.0.1:13001}
+      COLDCHAIN_LOCAL_JAEGER_URL: ${COLDCHAIN_LOCAL_JAEGER_URL:-http://127.0.0.1:16687}
+      COLDCHAIN_OBSERVABILITY_TIMEOUT_SECONDS: ${COLDCHAIN_OBSERVABILITY_TIMEOUT_SECONDS:-1.5}
       LLM_LIVE_CALLS_ENABLED: ${LLM_LIVE_CALLS_ENABLED:-false}
     ports:
       - "127.0.0.1:${COLDCHAIN_API_HOST_PORT:-8000}:8000"
@@ -183,6 +208,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      showcase-seed:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/ >/dev/null"]
       interval: 10s

@@ -2,9 +2,10 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4
 
+from coldchain.application.demo_projection import demo_incident_reference
 from coldchain.application.interfaces import TelemetryPublisher
 from coldchain.contracts.models import TelemetryEvent
 
@@ -75,6 +76,10 @@ class DemoRun:
     started_at: datetime
 
 
+DemoStageState = Literal["PENDING", "COMPLETED", "NOT_REQUIRED", "BLOCKED", "FAILED"]
+DemoResultState = Literal["PROCESSING", "COMPLETE", "AWAITING_HUMAN_REVIEW", "BLOCKED", "FAILED"]
+
+
 class DemoScenarioService:
     """Publish synthetic telemetry and read its durable workflow status."""
 
@@ -119,6 +124,43 @@ class DemoScenarioService:
         incident_value = durable.get("incident")
         incident = cast(dict[str, Any] | None, incident_value)
         complete = processed == len(run.event_ids)
+        governance_value = incident.get("governance") if incident else None
+        governance = cast(dict[str, Any] | None, governance_value)
+        governance_decision = (
+            str(governance["decision"])
+            if governance is not None and governance.get("decision") is not None
+            else None
+        )
+        human_decision_recorded = bool(incident and incident.get("approval"))
+        incident_id = UUID(str(incident["incidentId"])) if incident else None
+        incident_reference = (
+            str(incident.get("incidentReference"))
+            if incident and incident.get("incidentReference")
+            else demo_incident_reference(incident_id)
+            if incident_id is not None
+            else None
+        )
+        shipment_reference = (
+            str(incident.get("shipmentReference"))
+            if incident and incident.get("shipmentReference")
+            else None
+        )
+        incident_severity = (
+            str(incident.get("severity")) if incident and incident.get("severity") else None
+        )
+        result_state = self._result_state(
+            complete=complete,
+            incident=incident,
+            governance_decision=governance_decision,
+            human_decision_recorded=human_decision_recorded,
+        )
+        stage_states = self._stage_states(
+            processed=processed,
+            complete=complete,
+            incident=incident,
+            governance_decision=governance_decision,
+            human_decision_recorded=human_decision_recorded,
+        )
         return {
             "runId": str(run.run_id),
             "scenarioId": run.scenario_id,
@@ -137,15 +179,73 @@ class DemoScenarioService:
             "processedEventCount": processed,
             "dispositions": durable["dispositions"],
             "incident": incident,
-            "steps": {
-                "telemetrySubmitted": True,
-                "eventAccepted": True,
-                "policyEvaluated": processed > 0,
-                "evidenceCollected": bool(incident and incident.get("evidence")),
-                "recommendationCreated": bool(incident and incident.get("recommendation")),
-                "governanceCompleted": bool(incident and incident.get("governance")),
-                "incidentReady": incident is not None,
-            },
+            "incidentId": str(incident_id) if incident_id is not None else None,
+            "incidentReference": incident_reference,
+            "shipmentReference": shipment_reference,
+            "incidentSeverity": incident_severity,
+            "governanceDecision": governance_decision,
+            "humanDecisionRecorded": human_decision_recorded,
+            "resultState": result_state,
+            "steps": stage_states,
+        }
+
+    @staticmethod
+    def _result_state(
+        *,
+        complete: bool,
+        incident: dict[str, Any] | None,
+        governance_decision: str | None,
+        human_decision_recorded: bool,
+    ) -> DemoResultState:
+        if incident is None:
+            return "COMPLETE" if complete else "PROCESSING"
+        if governance_decision in {"PROHIBITED", "KILL_SWITCH_ACTIVE"}:
+            return "BLOCKED"
+        if governance_decision == "APPROVAL_REQUIRED" and not human_decision_recorded:
+            return "AWAITING_HUMAN_REVIEW"
+        if governance_decision is None:
+            return "PROCESSING"
+        return "COMPLETE"
+
+    @staticmethod
+    def _stage_states(
+        *,
+        processed: int,
+        complete: bool,
+        incident: dict[str, Any] | None,
+        governance_decision: str | None,
+        human_decision_recorded: bool,
+    ) -> dict[str, DemoStageState]:
+        processed_state: DemoStageState = "COMPLETED" if processed > 0 else "PENDING"
+        if incident is None:
+            downstream: DemoStageState = "NOT_REQUIRED" if complete else "PENDING"
+            return {
+                "sensorReading": processed_state,
+                "policyCheck": processed_state,
+                "incidentCreated": downstream,
+                "evidenceCollected": downstream,
+                "aiAdvisory": downstream,
+                "governance": downstream,
+                "humanReview": downstream,
+            }
+
+        governance_complete = governance_decision is not None
+        if human_decision_recorded:
+            human_review: DemoStageState = "COMPLETED"
+        elif governance_decision == "APPROVAL_REQUIRED":
+            human_review = "PENDING"
+        elif governance_decision in {"PROHIBITED", "KILL_SWITCH_ACTIVE"}:
+            human_review = "NOT_REQUIRED"
+        else:
+            human_review = "PENDING"
+        return {
+            "sensorReading": processed_state,
+            "policyCheck": processed_state,
+            "incidentCreated": "COMPLETED",
+            "evidenceCollected": "COMPLETED" if incident.get("evidence") else "PENDING",
+            "aiAdvisory": "COMPLETED" if incident.get("recommendation") else "PENDING",
+            "governance": "COMPLETED" if governance_complete else "PENDING",
+            "humanReview": human_review,
         }
 
     @staticmethod

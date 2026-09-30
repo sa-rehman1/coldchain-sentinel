@@ -6,6 +6,7 @@ from dataclasses import replace
 from datetime import datetime
 from uuid import UUID, uuid4
 
+from coldchain.application.demo_projection import DemoShipmentProjection
 from coldchain.application.interfaces import (
     ActionAdapter,
     Identity,
@@ -85,6 +86,16 @@ class TemperatureBreachWorkflow:
                     evaluation = self._policy.fail_closed(
                         {"eventId": str(event.event_id)}, "POLICY_EVALUATION_ERROR"
                     )
+
+        demo_projection = DemoShipmentProjection.for_event(event)
+        if demo_projection is not None:
+            evaluation = replace(
+                evaluation,
+                inputs={
+                    **evaluation.inputs,
+                    "demoProjection": demo_projection.as_policy_input(),
+                },
+            )
 
         if evaluation.disposition is not BreachDisposition.BREACH:
             with span("persistence.telemetry", attributes={"coldchain.outcome": "no_breach"}):
@@ -190,6 +201,17 @@ class TemperatureBreachWorkflow:
             reason_codes = (decision.value,)
             if self._kill_switch_active:
                 metrics.kill_switch_blocks.inc()
+        typed_recommendation = (
+            recommendation if isinstance(recommendation, Recommendation) else None
+        )
+        recommendation_valid = typed_recommendation is not None
+        provenance = typed_recommendation.provenance or {} if typed_recommendation else {}
+        cited_chunks = provenance.get("citedChunkIds") or provenance.get("cited_chunk_ids") or []
+        retrieved_chunks = (
+            provenance.get("retrievedChunkIds") or provenance.get("retrieved_chunk_ids") or []
+        )
+        citation_ids = {str(item) for item in cited_chunks}
+        retrieved_ids = {str(item) for item in retrieved_chunks}
         return GovernanceEvaluation(
             evaluation_id=uuid4(),
             incident_id=incident.incident_id,
@@ -201,7 +223,19 @@ class TemperatureBreachWorkflow:
             decision=decision.value,
             policy_version="temperature-action-governance-1.0",
             reason_codes=reason_codes,
-            inputs={"evidenceId": str(evidence.evidence_id)},
+            inputs={
+                "evidenceId": str(evidence.evidence_id),
+                "recommendationSchemaValid": recommendation_valid,
+                "evidenceSnapshotComplete": bool(evidence.telemetry_event_ids),
+                "citationsRecognized": bool(citation_ids) and citation_ids <= retrieved_ids,
+                "citationsTrusted": bool(citation_ids),
+                "actionAllowed": decision is not GovernanceDecision.PROHIBITED,
+                "recommendationExpired": bool(
+                    typed_recommendation and typed_recommendation.expires_at <= now
+                ),
+                "killSwitchActive": self._kill_switch_active,
+                "humanApprovalRequired": decision is GovernanceDecision.APPROVAL_REQUIRED,
+            },
             evaluated_at=now,
         )
 

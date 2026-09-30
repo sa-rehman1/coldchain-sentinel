@@ -59,6 +59,9 @@ export const dashboard: DashboardData = {
   incidents,
   liveTelemetry,
   generatedAt: new Date(0).toISOString(),
+  metrics: { affectedShipments: 8, openIncidents: 5, awaitingHumanReview: 2 },
+  severityDistribution: { critical: 3, warning: 3, normal: 2 },
+  approvalQueue: { pending: 2, oldestWaitingMinutes: 52, expiringWithin15Minutes: 1 },
   services: [
     { name: 'API', state: 'healthy', latency: '42 ms', detail: 'Ready · 0.2% errors' },
     { name: 'Worker', state: 'healthy', latency: '18 ms', detail: '3 consumers active' },
@@ -70,10 +73,10 @@ export const dashboard: DashboardData = {
     { name: 'Jaeger', state: 'degraded', latency: '—', detail: '2 delayed spans', url: 'http://localhost:16687' },
   ],
   trend: [
-    { hour: '00:00', incidents: 3, breaches: 1, awaitingReview: 1 }, { hour: '04:00', incidents: 5, breaches: 2, awaitingReview: 1 },
-    { hour: '08:00', incidents: 8, breaches: 4, awaitingReview: 2 }, { hour: '12:00', incidents: 6, breaches: 3, awaitingReview: 1 },
-    { hour: '16:00', incidents: 10, breaches: 5, awaitingReview: 3 }, { hour: '20:00', incidents: 7, breaches: 2, awaitingReview: 2 },
-    { hour: 'Now', incidents: 8, breaches: 3, awaitingReview: 2 },
+    { hour: '00:00', critical: 1, warning: 2, resolved: 4 }, { hour: '04:00', critical: 2, warning: 3, resolved: 6 },
+    { hour: '08:00', critical: 4, warning: 4, resolved: 5 }, { hour: '12:00', critical: 3, warning: 3, resolved: 8 },
+    { hour: '16:00', critical: 5, warning: 5, resolved: 7 }, { hour: '20:00', critical: 2, warning: 5, resolved: 10 },
+    { hour: 'Now', critical: 3, warning: 5, resolved: 9 },
   ],
   recommendations: [
     { time: '2m ago', incident: 'INC-2481', action: 'HOLD_SHIPMENT', outcome: 'Awaiting human' },
@@ -81,6 +84,7 @@ export const dashboard: DashboardData = {
     { time: '1h ago', incident: 'INC-2478', action: 'REQUEST_INSPECTION', outcome: 'Fallback' },
     { time: '2h ago', incident: 'INC-2477', action: 'RELEASE_SHIPMENT', outcome: 'Completed' },
   ],
+  humanDecisions: [],
 };
 
 export const scenarios: Scenario[] = [
@@ -117,8 +121,17 @@ export function investigationFor(id: string): InvestigationData {
       fallback: incident.governance === 'fallback',
       provider: 'Groq', model: 'openai/gpt-oss-20b', promptVersion: 'recommendation.v1', schemaVersion: '1.0.0',
       latencyMs: 842, tokens: 611, estimatedCost: '$0.0002', expiresInMinutes: expired ? 0 : 9, validation: expired ? 'expired' : 'valid',
+      actionability: expired ? {
+        state: 'EXPIRED', approvalAllowed: false, rejectionAllowed: false,
+        status: 'Expired — approval blocked',
+        explanation: 'The historical governance evaluation remains unchanged, but a new human decision cannot be recorded after recommendation expiry.',
+      } : {
+        state: 'AWAITING_HUMAN_REVIEW', approvalAllowed: true, rejectionAllowed: true,
+        status: 'Awaiting human review',
+        explanation: 'The recommendation is current and an authorized dispatcher may approve or reject it.',
+      },
     },
-    governanceChecks: expired ? governanceChecks.map((check) => check.name === 'Expiry check' ? { ...check, state: 'failure', detail: 'Recommendation expired and cannot be approved.' } : check) : governanceChecks,
+    governanceChecks,
     audit,
   };
 }

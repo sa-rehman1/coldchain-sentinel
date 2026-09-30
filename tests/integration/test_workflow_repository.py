@@ -9,6 +9,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import DBAPIError
 
 from coldchain.application.actions import SimulatedColdChainActionAdapter
+from coldchain.application.demo import DemoScenarioService
 from coldchain.application.interfaces import Identity
 from coldchain.application.recommendations import DeterministicLocalRecommendationProvider
 from coldchain.application.workflow import (
@@ -20,7 +21,14 @@ from coldchain.application.workflow import (
 from coldchain.contracts.models import TelemetryEvent
 from coldchain.domain import ApprovalDecision
 from coldchain.infrastructure.database import Database
-from coldchain.infrastructure.models import AuditEventRecord, IncidentRecord, RecommendationRecord
+from coldchain.infrastructure.models import (
+    ActionResultRecord,
+    ApprovalRecord,
+    AuditEventRecord,
+    CommandRecord,
+    IncidentRecord,
+    RecommendationRecord,
+)
 from coldchain.infrastructure.repositories import SqlWorkflowRepository
 
 
@@ -70,6 +78,9 @@ async def test_repository_duplicate_audit_approval_and_command_idempotency() -> 
         assert incident["telemetry"]
         assert incident["evidence"]
         assert incident["recommendation"]
+        assert incident["recommendation"]["actionability"]["state"] == ("AWAITING_HUMAN_REVIEW")
+        assert incident["recommendation"]["actionability"]["approvalAllowed"] is True
+        assert incident["recommendation"]["actionability"]["rejectionAllowed"] is True
         assert incident["governance"]
         timeline = await repository.timeline(first.incident_id)
         sequences = [int(str(item["sequence"])) for item in timeline]
@@ -157,6 +168,105 @@ async def test_repository_duplicate_audit_approval_and_command_idempotency() -> 
 
 
 @pytest.mark.integration
+async def test_guided_demo_incident_is_one_complete_preapproval_projection() -> None:
+    database = Database(_url())
+    repository = SqlWorkflowRepository(database)
+    workflow = TemperatureBreachWorkflow(repository, DeterministicLocalRecommendationProvider())
+    now = datetime.now(UTC)
+    correlation_id = uuid4()
+    shipment_id = uuid4()
+    events = DemoScenarioService._events("sustained", now, correlation_id, shipment_id)
+    try:
+        before = len(await repository.list_incidents())
+        results = [await workflow.process(event, now=now) for event in events]
+        incident_id = results[-1].incident_id
+        assert incident_id is not None
+        assert len(await repository.list_incidents()) == before + 1
+
+        incident = await repository.get_incident(incident_id)
+        assert incident is not None
+        assert str(incident["incidentReference"]).startswith("INC-DEMO-")
+        assert str(incident["shipmentReference"]).startswith("CCS-DEMO-")
+        assert str(incident_id) not in str(incident["incidentReference"])
+        assert str(shipment_id) not in str(incident["shipmentReference"])
+        assert incident["severity"] == "HIGH"
+        assert incident["state"] == "AWAITING_APPROVAL"
+        assert incident["sensorLabel"] == "Probe DEMO-01"
+        assert incident["productLabel"] == "Synthetic fresh perishables"
+        assert incident["route"] == {
+            "origin": "Chicago, IL",
+            "via": "Des Moines, IA",
+            "destination": "Denver, CO",
+            "progress": 55,
+        }
+        profile = incident["evidenceProfile"]
+        assert isinstance(profile, dict)
+        assert profile == {
+            "sensorHealth": "Healthy",
+            "calibration": "Verified",
+            "sampleIntervalMinutes": 1,
+            "readingQuality": "No quality flags",
+            "productSensitivity": "High",
+            "custodyVerification": "Complete",
+            "complete": True,
+        }
+        telemetry = incident["telemetry"]
+        assert isinstance(telemetry, list) and len(telemetry) == 3
+        assert [item["temperatureCelsius"] for item in telemetry] == [8.7, 9.1, 9.4]
+        assert all(item["policyInputs"]["upperThresholdCelsius"] == 8.0 for item in telemetry)
+        assert all("lowerThresholdCelsius" not in item["policyInputs"] for item in telemetry)
+
+        evidence = incident["evidence"]
+        recommendation = incident["recommendation"]
+        governance = incident["governance"]
+        assert isinstance(evidence, dict)
+        assert str(evidence["evidenceReference"]).startswith("EVD-DEMO-")
+        assert str(evidence["evidenceId"]) not in str(evidence["evidenceReference"])
+        assert isinstance(recommendation, dict)
+        assert isinstance(governance, dict)
+        cited = set(recommendation["provenance"]["citedChunkIds"])
+        assert cited == {item["chunkId"] for item in incident["sopEvidence"]}
+        applicability = {
+            item["documentTitle"]: item["whyApplicable"] for item in incident["sopEvidence"]
+        }
+        assert applicability == {
+            "Fresh and Perishable Temperature Excursions": (
+                "This section defines how to respond to a sustained fresh-product temperature "
+                "breach and requires preserving the shipment pending review."
+            ),
+            "Evidence and Sensor Integrity": (
+                "This section defines the telemetry, sensor, timing, sequence, and integrity "
+                "evidence required before a decision."
+            ),
+            "Shipment Hold, Inspection, and Release": (
+                "This section requires authenticated dispatcher authorization for HOLD_SHIPMENT "
+                "and prevents the recommendation engine from executing it directly."
+            ),
+        }
+        assert len(set(applicability.values())) == 3
+        assert recommendation["evidenceIds"] == [evidence["evidenceId"]]
+        assert governance["decision"] == "APPROVAL_REQUIRED"
+        assert all(check["state"] in {"pass", "warning"} for check in governance["checks"])
+        assert "approval" not in incident
+        assert "command" not in incident
+
+        timeline = await repository.timeline(incident_id)
+        assert [item["eventType"] for item in timeline] == [
+            "TELEMETRY_RECEIVED",
+            "BREACH_POLICY_EVALUATED",
+            "EVIDENCE_SNAPSHOT_CREATED",
+            "RECOMMENDATION_CREATED",
+            "GOVERNANCE_EVALUATED",
+        ]
+        duplicate = await workflow.process(events[-1], now=now)
+        assert duplicate.duplicate is True
+        assert len(await repository.timeline(incident_id)) == 5
+        assert len(await repository.list_incidents()) == before + 1
+    finally:
+        await database.dispose()
+
+
+@pytest.mark.integration
 async def test_expired_recommendation_fails_closed_and_audit_is_append_only() -> None:
     database = Database(_url())
     repository = SqlWorkflowRepository(database)
@@ -175,16 +285,47 @@ async def test_expired_recommendation_fails_closed_and_audit_is_append_only() ->
                 .where(RecommendationRecord.recommendation_id == recommendation_id)
                 .values(expires_at=datetime.now(UTC) - timedelta(minutes=1))
             )
-        with pytest.raises(WorkflowConflictError, match="expired"):
-            await ApprovalService(repository, SimulatedColdChainActionAdapter()).decide(
-                result.incident_id,
-                recommendation_id,
-                Identity("dispatcher-expiry", frozenset({"dispatcher"})),
-                ApprovalDecision.APPROVED,
-                "late decision",
-                "integration-expired-approval",
-                event.correlation_id,
-            )
+        expired_view = await repository.get_incident(result.incident_id)
+        assert expired_view is not None
+        assert expired_view["recommendation"]["actionability"] == {
+            "state": "EXPIRED",
+            "approvalAllowed": False,
+            "rejectionAllowed": False,
+            "status": "Expired — approval blocked",
+            "explanation": (
+                "The historical governance evaluation remains unchanged, but a new human "
+                "decision cannot be recorded after recommendation expiry."
+            ),
+            "expiresInMinutes": 0,
+        }
+        expiry_check = next(
+            check
+            for check in expired_view["governance"]["checks"]
+            if check["name"] == "Expiry check"
+        )
+        assert expiry_check == {
+            "name": "Expiry check",
+            "state": "pass",
+            "detail": "The recommendation was current when governance evaluated it.",
+        }
+        assert expired_view["governance"]["decision"] == "APPROVAL_REQUIRED"
+        baseline_timeline = await repository.timeline(result.incident_id)
+        service = ApprovalService(repository, SimulatedColdChainActionAdapter())
+        identity = Identity("dispatcher-expiry", frozenset({"dispatcher"}))
+        for decision, key in (
+            (ApprovalDecision.APPROVED, "integration-expired-approval"),
+            (ApprovalDecision.REJECTED, "integration-expired-rejection"),
+        ):
+            with pytest.raises(WorkflowConflictError, match="expired"):
+                await service.decide(
+                    result.incident_id,
+                    recommendation_id,
+                    identity,
+                    decision,
+                    "late decision",
+                    key,
+                    event.correlation_id,
+                )
         with pytest.raises(DBAPIError, match="append-only"):
             async with database.transaction() as session:
                 sequence = await session.scalar(
@@ -201,7 +342,33 @@ async def test_expired_recommendation_fails_closed_and_audit_is_append_only() ->
             state = await session.scalar(
                 select(IncidentRecord.state).where(IncidentRecord.incident_id == result.incident_id)
             )
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(ApprovalRecord)
+                    .where(ApprovalRecord.recommendation_id == recommendation_id)
+                )
+                == 0
+            )
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(CommandRecord)
+                    .where(CommandRecord.incident_id == result.incident_id)
+                )
+                == 0
+            )
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(ActionResultRecord)
+                    .join(CommandRecord)
+                    .where(CommandRecord.incident_id == result.incident_id)
+                )
+                == 0
+            )
         assert state == "AWAITING_APPROVAL"
+        assert await repository.timeline(result.incident_id) == baseline_timeline
     finally:
         await database.dispose()
 

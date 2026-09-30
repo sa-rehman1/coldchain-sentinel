@@ -1,14 +1,16 @@
 """Versioned governed-incident API routes."""
 
+from enum import StrEnum
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.exceptions import HTTPException
 
 from coldchain.api.auth import local_identity
 from coldchain.api.dependencies import (
     get_approval_service,
+    get_incident_reader,
     get_repository,
     get_telemetry_publisher,
 )
@@ -20,12 +22,21 @@ from coldchain.api.schemas import (
     TelemetryAccepted,
     TimelineEventView,
 )
-from coldchain.application.interfaces import Identity, TelemetryPublisher, WorkflowRepository
+from coldchain.application.interfaces import (
+    Identity,
+    IncidentReader,
+    TelemetryPublisher,
+    WorkflowRepository,
+)
 from coldchain.application.workflow import ApprovalService
 from coldchain.contracts.models import TelemetryEvent
 from coldchain.domain import ApprovalDecision
 
 router = APIRouter()
+
+
+class IncidentListScope(StrEnum):
+    CANONICAL_SHOWCASE = "canonical-showcase"
 
 
 @router.post(
@@ -43,8 +54,11 @@ async def submit_telemetry(
 
 @router.get("/incidents", response_model=list[IncidentView])
 async def list_incidents(
-    repository: Annotated[WorkflowRepository, Depends(get_repository)],
+    repository: Annotated[IncidentReader, Depends(get_incident_reader)],
+    scope: Annotated[IncidentListScope | None, Query()] = None,
 ) -> list[dict[str, object]]:
+    if scope is IncidentListScope.CANONICAL_SHOWCASE:
+        return await repository.list_showcase_incidents()
     return await repository.list_incidents()
 
 

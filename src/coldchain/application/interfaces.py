@@ -74,6 +74,20 @@ class WorkflowRepository(Protocol):
     async def command_status(self, command_id: UUID) -> dict[str, object] | None: ...
 
 
+class DashboardReader(Protocol):
+    """Read-only projection used by the control-tower landing page."""
+
+    async def dashboard(self) -> dict[str, object]: ...
+
+
+class IncidentReader(Protocol):
+    """Read-only incident queries, including the explicit portfolio scope."""
+
+    async def list_incidents(self) -> list[dict[str, object]]: ...
+
+    async def list_showcase_incidents(self) -> list[dict[str, object]]: ...
+
+
 class ActionAdapter(Protocol):
     identity: str
 

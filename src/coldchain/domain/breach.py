@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Any
 from uuid import UUID
 
 from coldchain.domain.incidents import require_utc
@@ -29,7 +30,7 @@ class BreachEvaluation:
     disposition: BreachDisposition
     policy_version: str
     reason_codes: tuple[str, ...]
-    inputs: dict[str, str | int | float | list[float]]
+    inputs: dict[str, Any]
     severity: str | None = None
 
 
@@ -49,7 +50,7 @@ class FreshPerishablePolicy:
     ) -> BreachEvaluation:
         now = require_utc(evaluated_at)
         occurred_at = require_utc(current.occurred_at)
-        inputs: dict[str, str | int | float | list[float]] = {
+        inputs: dict[str, Any] = {
             "temperatureCelsius": current.temperature_celsius,
             "readingSequence": current.sequence,
             "occurredAt": occurred_at.isoformat(),
@@ -102,7 +103,7 @@ class FreshPerishablePolicy:
 
     def fail_closed(
         self,
-        inputs: dict[str, str | int | float | list[float]],
+        inputs: dict[str, Any],
         reason: str,
     ) -> BreachEvaluation:
         return BreachEvaluation(

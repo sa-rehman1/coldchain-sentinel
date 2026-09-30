@@ -23,6 +23,9 @@ describe('control tower interface', () => {
     expect(screen.getByText('Local demo · Mock')).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Cold-chain operations', level: 1 })).toBeInTheDocument();
     expect(container.querySelector('.light-shell')).toBeInTheDocument();
+    const reviewer = screen.getByRole('button', { name: /Dispatcher/ });
+    expect(reviewer).toHaveTextContent('Dispatcher');
+    expect(reviewer).not.toHaveTextContent('Local demonstration identity');
   });
 
   it('has no automated accessibility violations on the command center', async () => {
@@ -111,8 +114,8 @@ describe('control tower interface', () => {
     await screen.findByText('Critical incidents');
     const summary = deriveIncidentSummary(incidents);
     expect(summary).toEqual({ criticalCount: 3, approvalQueueCount: 2, oldestWaitingMinutes: 52, sustainedBreachCount: 2, immediateBreachCount: 1 });
-    expect(screen.getByText('2 sustained · 1 immediate')).toBeInTheDocument();
-    expect(screen.getByText('1 expires in 9 min')).toBeInTheDocument();
+    expect(screen.getByText('5 total incidents remain open')).toBeInTheDocument();
+    expect(screen.getByText('1 expiring within 15 min')).toBeInTheDocument();
   });
 
   it('replaces the decorative network with useful live telemetry', async () => {
@@ -213,7 +216,8 @@ describe('control tower interface', () => {
     renderApp('/governed-ai');
     expect(await screen.findByRole('heading', { name: 'Recommendation lifecycle' })).toBeInTheDocument();
     expect(screen.getAllByRole('tab')).toHaveLength(4);
-    expect(screen.getAllByText(/model recommends\. policy governs\. humans authorize/i)).toHaveLength(2);
+    expect(screen.getAllByText(/recommendation engine advises\. policy governs\. humans authorize/i)).toHaveLength(2);
+    expect(screen.getByText('Recommendations are generated locally by the deterministic engine. No external model call is made.')).toBeInTheDocument();
     expect(screen.getByText('Evidence bundle ready')).toBeInTheDocument();
     await user.click(screen.getByRole('tab', { name: /Governance/i }));
     expect(screen.getByText('Citations valid')).toBeInTheDocument();
@@ -224,13 +228,13 @@ describe('control tower interface', () => {
     const user = userEvent.setup();
     renderApp('/governed-ai');
     expect(await screen.findByRole('heading', { name: 'How a recommendation becomes a safe action' })).toBeInTheDocument();
-    for (const principle of ['AI suggests', 'Rules verify', 'A human decides']) expect(screen.getByRole('heading', { name: principle })).toBeInTheDocument();
+    for (const principle of ['Recommendation generated', 'Rules verify', 'A human decides']) expect(screen.getByRole('heading', { name: principle })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /Current example · INC-2481/ })).toBeInTheDocument();
     expect(screen.getByText('Six sensor readings and two trusted SOP sections were collected.')).toBeInTheDocument();
     expect(screen.getByLabelText('Stage 1 of 4: Evidence')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Previous/i })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: /Next stage/i }));
-    expect(screen.getByText('AI recommends holding the shipment for inspection.')).toBeInTheDocument();
+    expect(screen.getByText('The recommendation engine advises holding the shipment for inspection.')).toBeInTheDocument();
     expect(screen.getByLabelText('Stage 2 of 4: Recommendation')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Previous/i }));
     expect(screen.getByText('Six sensor readings and two trusted SOP sections were collected.')).toBeInTheDocument();
@@ -300,13 +304,29 @@ describe('control tower interface', () => {
     renderApp('/demo-lab');
     expect((await screen.findAllByRole('heading', { name: 'Sustained temperature breach' })).length).toBeGreaterThan(0);
     expect(screen.getByText(/best end-to-end demonstration/i)).toBeInTheDocument();
-    expect(screen.getByText('Sensor report')).toBeInTheDocument();
+    expect(screen.getByText('Sensor reading')).toBeInTheDocument();
     expect(screen.getByText(/affects only this browser’s in-memory fixture state/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Start guided demo/i }));
-    await waitFor(() => expect(screen.getByText('Incident created')).toBeInTheDocument(), { timeout: 3000 });
-    expect(screen.getByRole('button', { name: /Open incident investigation/i })).toBeInTheDocument();
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole('button', { name: /Open incident investigation/i }),
+        ).toBeInTheDocument(),
+      { timeout: 3000 },
+    );
     expect(screen.getByRole('button', { name: 'Run again' })).toBeInTheDocument();
     expect(screen.getAllByRole('button', { name: 'Restore demo fixtures' }).length).toBeGreaterThan(0);
+  });
+
+  it('explains the local demo in truthful workflow order accessibly', async () => {
+    const { container } = renderApp('/demo-lab');
+    const workflow = await screen.findByRole('list', { name: 'Recommended demo workflow' });
+    const stages = within(workflow).getAllByRole('listitem').map((item) => item.querySelector('strong')?.textContent);
+    expect(stages).toEqual(['Sensor reading', 'Policy check', 'Incident created', 'Evidence collected', 'AI advisory', 'Governance', 'Human review']);
+    expect(screen.getByText('This demo sends synthetic sensor readings through the real local workflow. It creates no real shipment action and makes no external AI call.')).toBeInTheDocument();
+    expect(screen.getByText('Disabled for this deterministic demo')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Test operational and AI safety scenarios' })).toBeInTheDocument();
+    expect((await axe(container)).violations).toEqual([]);
   });
 
   it('renders shared severity and governance indicators with visible accessible text', () => {
@@ -329,10 +349,11 @@ describe('control tower interface', () => {
     expect((await screen.findAllByText(/idempotent command already exists/i)).length).toBeGreaterThan(0);
   });
 
-  it('blocks approval for an expired recommendation', async () => {
+  it('blocks approval and rejection for an expired recommendation', async () => {
     renderApp('/investigation/INC-2474');
-    expect(await screen.findByText('Expired')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Recommendation expired' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Approve hold' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeDisabled();
   });
 
   it('supports empty and disconnected fixture states', async () => {

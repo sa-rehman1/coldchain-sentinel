@@ -12,6 +12,7 @@ from coldchain.ai.provider import (
     ProviderConfig,
     ProviderFailure,
 )
+from coldchain.application.demo_projection import DemoShipmentProjection
 from coldchain.config import Settings
 from coldchain.domain import EvidenceSnapshot, Incident, Recommendation
 from coldchain.domain.incidents import utc_now
@@ -23,7 +24,11 @@ from coldchain.retrieval.core import (
     QdrantVectorStore,
     SopChunk,
     VectorStore,
+    chunk_document,
 )
+from coldchain.retrieval.corpus import CORPUS_VERSION, SECTION_APPLICABILITY, load_corpus
+
+DEMO_SOP_SECTION_IDS = frozenset({"TEMP-001-S2", "EVID-001-S1", "HOLD-001-S1"})
 
 
 class DeterministicLocalRecommendationProvider:
@@ -34,6 +39,23 @@ class DeterministicLocalRecommendationProvider:
 
     def recommend(self, incident: Incident, evidence: EvidenceSnapshot) -> Recommendation:
         now = utc_now()
+        demo_projection = DemoShipmentProjection.from_policy_inputs(evidence.policy_inputs)
+        cited_chunks = (
+            tuple(
+                chunk
+                for document in load_corpus()
+                for chunk in chunk_document(document)
+                if chunk.section_id in DEMO_SOP_SECTION_IDS
+                and chunk.effective_date <= incident.created_at.date()
+                and (
+                    chunk.superseded_date is None
+                    or chunk.superseded_date > incident.created_at.date()
+                )
+            )
+            if demo_projection is not None
+            else ()
+        )
+        cited_chunk_ids = [chunk.chunk_id for chunk in cited_chunks]
         metrics.recommendations.labels(
             provider="deterministic", model=self.version, validation_result="deterministic"
         ).inc()
@@ -58,6 +80,24 @@ class DeterministicLocalRecommendationProvider:
                 "fallbackUsed": False,
                 "validationResult": "deterministic",
                 "recommendationExpiry": (now + timedelta(minutes=30)).isoformat(),
+                "promptVersion": "governed-recommendation-v1",
+                "responseSchemaVersion": "1.0",
+                "evidenceSufficient": bool(cited_chunks),
+                "uncertaintyLevel": "low" if cited_chunks else "medium",
+                "missingInformation": [],
+                "contraindications": [],
+                "retrievedChunkIds": cited_chunk_ids,
+                "citedChunkIds": cited_chunk_ids,
+                "citedDocumentIds": sorted({chunk.document_id for chunk in cited_chunks}),
+                "citedSectionIds": sorted({chunk.section_id for chunk in cited_chunks}),
+                "sopCorpusVersion": CORPUS_VERSION,
+                "citationApplicability": {
+                    chunk.chunk_id: SECTION_APPLICABILITY.get(
+                        chunk.section_id,
+                        "This effective ColdChain Sentinel section governs the recorded incident.",
+                    )
+                    for chunk in cited_chunks
+                },
             },
         )
 

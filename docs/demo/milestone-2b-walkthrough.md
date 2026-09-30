@@ -9,7 +9,9 @@ and prints the local URLs:
 ```
 
 Open `http://127.0.0.1:4173`, confirm the header says `Local demo · API`, and select
-`Dispatcher` under `Local demonstration identity`. In Demo Lab, start **Sustained temperature
+`Dispatcher`. The Command Center is populated by the idempotent `showcase-seed` service and reads
+only its stable fictional shipment namespace. Existing integration and ad-hoc demo records remain
+stored but are excluded from this portfolio view. In Demo Lab, start **Sustained temperature
 breach**. The progress display advances only when the API reports durable worker state. Open the
 created incident, inspect telemetry, trusted SOP citation identifiers, deterministic-fallback
 provenance, governance, and the audit trail. Enter a reviewer rationale and approve the hold. The
@@ -23,6 +25,15 @@ than fixture metrics when a source is absent.
 
 The demo does not enable or call Groq or OpenAI, download an embedding model, reset a database, or
 delete Docker resources.
+
+To refresh only the canonical showcase timestamps and values without deleting unrelated data, run:
+
+```powershell
+docker compose --env-file .env --profile demo run --rm showcase-seed
+```
+
+The stable shipment, telemetry, incident, evidence, recommendation, and governance identifiers make
+the preparation idempotent. It creates no approval or operational command.
 
 Validate an already-running stack with `.\scripts\demo.ps1 -Action Validate -Observability`. Stop
 it safely with `.\scripts\demo.ps1 -Action Stop -Observability`; this preserves containers,

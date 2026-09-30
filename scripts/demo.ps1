@@ -67,6 +67,7 @@ $overridePath = $null
 try {
     $env:LLM_PROVIDER = 'deterministic'
     $env:LLM_LIVE_CALLS_ENABLED = 'false'
+    $env:COLDCHAIN_OTEL_TRACING_ENABLED = if ($Observability) { 'true' } else { 'false' }
     if ($EnableGroq) {
         $groqKey = Read-EnvValue 'GROQ_API_KEY'
         if (-not $groqKey -or $groqKey -notmatch '^gsk_[A-Za-z0-9_-]{20,}$') {
@@ -119,6 +120,12 @@ services:
     Wait-Http 'http://127.0.0.1:8000/api/v1/health/ready'
     Wait-Http 'http://127.0.0.1:4173/'
     Wait-Http 'http://127.0.0.1:6333/readyz'
+    if ($Observability) {
+        Wait-Http 'http://127.0.0.1:19090/-/ready'
+        Wait-Http 'http://127.0.0.1:13001/api/health'
+        Wait-Http 'http://127.0.0.1:16687/'
+        Wait-Http 'http://127.0.0.1:8000/api/v1/observability/summary'
+    }
 
     Write-Host ''
     Write-Host 'Local URLs:'

@@ -93,6 +93,13 @@ class Settings(BaseSettings):
     otel_tracing_enabled: bool = False
     otel_exporter_otlp_endpoint: str = "http://localhost:4318/v1/traces"
     otel_export_timeout_seconds: float = Field(default=2.0, gt=0, le=10)
+    prometheus_url: str = "http://localhost:19090"
+    grafana_url: str = "http://localhost:13001"
+    jaeger_url: str = "http://localhost:16687"
+    local_prometheus_url: str = "http://127.0.0.1:19090"
+    local_grafana_url: str = "http://127.0.0.1:13001"
+    local_jaeger_url: str = "http://127.0.0.1:16687"
+    observability_timeout_seconds: float = Field(default=1.5, gt=0, le=5)
 
     @field_validator(
         "service_name",
@@ -101,6 +108,12 @@ class Settings(BaseSettings):
         "kafka_consumer_group",
         "worker_metrics_host",
         "otel_exporter_otlp_endpoint",
+        "prometheus_url",
+        "grafana_url",
+        "jaeger_url",
+        "local_prometheus_url",
+        "local_grafana_url",
+        "local_jaeger_url",
     )
     @classmethod
     def reject_blank_values(cls, value: str) -> str:

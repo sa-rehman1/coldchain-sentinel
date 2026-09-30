@@ -1,12 +1,13 @@
-import { Activity, Braces, ExternalLink, Gauge, Network } from 'lucide-react';
+import { Activity, Braces, ExternalLink, Gauge, Network, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CHART_COLORS, ChartLegend, ChartTooltip } from '../../components/data-display/ChartSupport';
 import { Metric, Panel } from '../../components/data-display/Panel';
 import { ServiceHealthTable } from '../../components/data-display/ServiceHealthTable';
-import { Button } from '../../components/ui/Primitives';
+import { Badge, Button, EmptyState, StatusDot } from '../../components/ui/Primitives';
 import { GovernanceIndicator } from '../../components/ui/StatusIndicators';
-import { useDashboard } from '../../hooks/useControlTower';
+import type { ObservabilitySummary } from '../../data/contracts';
+import { useDashboard, useObservabilitySummary } from '../../hooks/useControlTower';
 
 const requestData = [
   { time: '10:00', requests: 34, p50: 38, p95: 112 }, { time: '10:10', requests: 48, p50: 42, p95: 135 },
@@ -19,13 +20,9 @@ const tabs = ['Overview', 'Services', 'Traces & Alerts'] as const;
 
 export function Observability() {
   const { data } = useDashboard();
+  const live = useObservabilitySummary();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>('Overview');
-  if (data?.mode === 'api') return <div className="page observability-page observability-polished">
-    <div className="page-intro compact"><div><p>Reliability posture</p><h1>Observability</h1><span>Authoritative health with safe local service links</span></div><div className="live-indicator"><span />API health · refreshed automatically</div></div>
-    <Panel title="Service health" eyebrow="Local API checks"><ServiceHealthTable services={data.services} /></Panel>
-    <div className="summary-strip primary-metrics"><Metric label="Request rate" value="Unavailable" detail="Open Prometheus for time series" /><Metric label="P95 latency" value="Unavailable" detail="Not exposed by the operational API" /><Metric label="Kafka throughput" value="Unavailable" detail="No fixture substituted" /><Metric label="Open incidents" value={String(data.incidents.filter((item) => item.state !== 'completed').length)} detail="Derived from incident records" /></div>
-    <Panel title="Local observability tools" eyebrow="No incident payloads are transmitted"><div className="tool-links">{[['Jaeger','http://localhost:16687'],['Prometheus','http://localhost:19090'],['Grafana','http://localhost:13001']].map(([label,url]) => <Button key={label} variant="secondary" onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}>{label}<ExternalLink size={13} /></Button>)}</div></Panel>
-  </div>;
+  if (data?.mode === 'api') return <LiveObservability query={live} />;
   return <div className="page observability-page observability-polished">
     <div className="page-intro compact"><div><p>Reliability posture</p><h1>Observability</h1><span>Local metrics, traces and alerts with safe telemetry boundaries</span></div><div className="live-indicator"><span />Demonstration snapshot · refresh paused</div></div>
     <div className="internal-tabs" role="tablist" aria-label="Observability views">{tabs.map((tab) => <button role="tab" aria-selected={activeTab === tab} key={tab} onClick={() => setActiveTab(tab)}>{tab}</button>)}</div>
@@ -34,6 +31,59 @@ export function Observability() {
     {activeTab === 'Traces & Alerts' && <TracesAndAlerts />}
   </div>;
 }
+
+function LiveObservability({ query }: { query: ReturnType<typeof useObservabilitySummary> }) {
+  const summary = query.data;
+  const metric = (key: string) => summary?.metrics.find((item) => item.key === key);
+  if (query.isLoading) return <div className="page observability-page observability-polished"><div className="page-intro compact"><div><p>Reliability posture</p><h1>Observability</h1><span>Loading bounded local operational data…</span></div></div><Panel title="Live observability" eyebrow="Same-origin operational API"><EmptyState title="Loading observability" detail="Collecting service health, metrics, alerts, and safe trace metadata." /></Panel></div>;
+  if (query.isError || !summary) return <div className="page observability-page observability-polished"><div className="page-intro compact"><div><p>Reliability posture</p><h1>Observability</h1><span>Operational summary unavailable</span></div></div><Panel title="Live observability" eyebrow="Safe degraded state"><EmptyState title="Observability is unavailable" detail="The application remains operational. Start the optional observability profile or retry the bounded summary request." /><div className="observability-retry"><Button variant="secondary" onClick={() => void query.refetch()}><RefreshCw size={14} />Retry</Button></div></Panel></div>;
+  return <div className="page observability-page observability-polished live-observability">
+    <section className="reliability-summary" aria-labelledby="reliability-title"><div><span className="section-kicker">Reliability summary</span><h1 id="reliability-title">Observability</h1><p>{summary.privacyNotice}</p></div><dl><div><dt>Overall</dt><dd><Badge tone={summary.overallStatus === 'HEALTHY' ? 'success' : 'warning'}>{humanize(summary.overallStatus)}</Badge></dd></div><div><dt>Services</dt><dd>{summary.healthyServices}/{summary.totalServices} healthy</dd></div><div><dt>Active alerts</dt><dd>{summary.activeAlerts}</dd></div><div><dt>Last refresh</dt><dd>{formatTime(summary.generatedAt)}</dd></div></dl><div className="refresh-control"><span className="live-indicator"><i />Auto-refresh · {summary.autoRefreshSeconds}s</span><Button variant="secondary" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw size={14} className={query.isFetching ? 'spin' : ''} />{query.isFetching ? 'Refreshing' : 'Refresh'}</Button></div></section>
+    <div className="observability-metrics" aria-label="Live operational metrics">
+      <LiveMetric item={metric('request_rate')} fallbackLabel="Request rate" />
+      <LiveMetric item={metric('p95_latency')} fallbackLabel="API P95 latency" />
+      <LiveMetric item={metric('error_rate')} fallbackLabel="API error rate" />
+      <LiveMetric item={metric('worker_throughput')} fallbackLabel="Worker throughput" />
+      <LiveMetric item={metric('consumer_lag')} fallbackLabel="Consumer lag" />
+      <LiveMetric item={metric('awaiting_review')} fallbackLabel="Awaiting review" />
+    </div>
+    <Panel title="Service health" eyebrow="Nine local operational dependencies" className="live-service-panel"><LiveServiceTable summary={summary} /></Panel>
+    <div className="live-charts-grid">
+      <OperationalChart title="API request rate" eyebrow="Prometheus · last 30 minutes" data={summary.series.apiRequestRate} unit=" requests/second" color={CHART_COLORS.primary} />
+      <OperationalChart title="API P95 latency" eyebrow="Prometheus · last 30 minutes" data={summary.series.apiP95Latency} unit=" ms" color={CHART_COLORS.warning} />
+      <OperationalChart title="Worker throughput" eyebrow="Processed events · last 30 minutes" data={summary.series.workerThroughput} unit=" events/minute" color={CHART_COLORS.healthy} />
+      <OperationalChart title="DLQ activity" eyebrow="Messages · last 30 minutes" data={summary.series.dlqActivity} unit=" messages" color={CHART_COLORS.critical} />
+    </div>
+    <div className="live-operations-grid">
+      <Panel title="Prometheus alert status" eyebrow={`${summary.alerts.rules.length} provisioned rules`}><AlertRules summary={summary} /></Panel>
+      <Panel title="Recent correlated workflow traces" eyebrow="Safe Jaeger metadata only"><LiveTraces summary={summary} /></Panel>
+      <Panel title="Recommendation operations" eyebrow="Bounded counters"><RecommendationOperations summary={summary} /></Panel>
+    </div>
+  </div>;
+}
+
+function LiveMetric({ item, fallbackLabel }: { item: ObservabilitySummary['metrics'][number] | undefined; fallbackLabel: string }) {
+  return <article className="live-metric"><span>{item?.label ?? fallbackLabel}</span><strong>{displayMetric(item)}</strong><small>{item?.source ?? 'Operational API'}</small></article>;
+}
+
+function LiveServiceTable({ summary }: { summary: ObservabilitySummary }) {
+  return <div className="live-service-table"><div className="live-service-head" aria-hidden="true"><span>Service</span><span>Status</span><span>Operational signal</span><span>Latency / lag</span><span>Last checked</span><span>Action</span></div>{summary.services.map((service) => { const state = service.status === 'HEALTHY' ? 'healthy' : service.status === 'DEGRADED' || service.status === 'OPTIONAL_NOT_STARTED' ? 'degraded' : 'offline'; return <div className="live-service-row" key={service.name}><div className="service-name"><StatusDot state={state} /><strong>{service.name}</strong></div><Badge tone={state === 'healthy' ? 'success' : state === 'degraded' ? 'warning' : 'critical'}>{humanize(service.status)}</Badge><span>{service.signal}</span><span>{service.measurement === null ? 'Not measured' : `${service.measurement.toFixed(1)} ms`}</span><time dateTime={service.checkedAt}>{formatTime(service.checkedAt)}</time><span>{service.inspectionUrl ? <Button variant="ghost" onClick={() => window.open(service.inspectionUrl!, '_blank', 'noopener,noreferrer')}>Inspect<ExternalLink size={13} /></Button> : <span className="no-action">—</span>}</span></div>; })}</div>;
+}
+
+function OperationalChart({ title, eyebrow, data, unit, color }: { title: string; eyebrow: string; data: Array<{ timestamp: string; value: number }>; unit: string; color: string }) {
+  const chartData = data.map((item) => ({ time: formatTime(item.timestamp), value: item.value }));
+  return <Panel title={title} eyebrow={eyebrow} className="live-chart-panel">{chartData.length ? <><ChartLegend items={[{ label: title, color, detail: unit.trim() }]} /><div className="chart-wrap live-observability-chart" role="img" aria-label={`${title} time series in ${unit.trim()}`}><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{ left: 2, right: 16, top: 8, bottom: 2 }}><CartesianGrid stroke="#E5E9EA" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="time" tick={{ fill: '#6D767E', fontSize: 10 }} /><YAxis tick={{ fill: '#6D767E', fontSize: 10 }} /><Tooltip content={<ChartTooltip units={{ value: unit }} />} /><Area dataKey="value" name={title} stroke={color} fill={color} fillOpacity={0.09} strokeWidth={2} /></AreaChart></ResponsiveContainer></div></> : <CompactEmpty text="No samples in the current 30-minute window." />}</Panel>;
+}
+
+function AlertRules({ summary }: { summary: ObservabilitySummary }) { if (summary.alerts.state === 'UNAVAILABLE') return <CompactEmpty text="Prometheus alert rules are unavailable. Start the observability profile to inspect them." />; if (!summary.alerts.rules.length) return <CompactEmpty text="No alert rules were reported." />; return <div className="alert-rule-list">{summary.alerts.rules.map((rule) => { const presentation = alertPresentation(rule.state); return <article key={rule.name}><Badge tone={presentation.tone}>{presentation.label}</Badge><div><strong>{rule.name}</strong><p>{rule.summary}</p></div><span>{humanize(rule.severity)} severity</span></article>; })}</div>; }
+function LiveTraces({ summary }: { summary: ObservabilitySummary }) { if (!summary.traces.items.length) return <CompactEmpty text={summary.traces.state === 'UNAVAILABLE' ? 'Jaeger is unavailable or optional tracing is not started.' : 'No workflow traces were recorded in the last hour.'} />; return <div className="live-trace-list">{summary.traces.items.map((trace) => <article key={trace.traceId}><Activity size={16} /><div><strong>{trace.operation}</strong><small className="mono">{trace.traceId}</small></div><span>{trace.durationMs.toFixed(1)} ms · {trace.spanCount} spans</span><time dateTime={trace.startedAt}>{formatTime(trace.startedAt)}</time></article>)}</div>; }
+function RecommendationOperations({ summary }: { summary: ObservabilitySummary }) { const keys = ['recommendation_count', 'recommendation_p95', 'fallback_count', 'open_incidents', 'simulated_actions']; return <dl className="recommendation-operations">{keys.map((key) => { const item = summary.metrics.find((metric) => metric.key === key); return <div key={key}><dt>{item?.label ?? key}</dt><dd>{displayMetric(item)}</dd></div>; })}</dl>; }
+function CompactEmpty({ text }: { text: string }) { return <div className="compact-empty"><p>{text}</p></div>; }
+function formatTime(value: string) { const parsed = new Date(value); return Number.isNaN(parsed.valueOf()) ? 'Unavailable' : parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+function humanize(value: string) { return value.toLowerCase().replaceAll('_', ' ').replace(/(^|\s)\S/g, (character) => character.toUpperCase()); }
+function displayMetric(item: ObservabilitySummary['metrics'][number] | undefined) { if (item?.state === 'UNAVAILABLE') return 'Unavailable'; if (!item || item.state === 'NO_SAMPLES' || item.value === null) return 'No samples'; return formatMetric(item.value, item.unit); }
+function alertPresentation(state: string): { label: string; tone: 'success' | 'warning' | 'critical' | 'neutral' } { switch (state.toUpperCase()) { case 'INACTIVE': return { label: 'Inactive', tone: 'success' }; case 'PENDING': return { label: 'Pending', tone: 'warning' }; case 'FIRING': return { label: 'Firing', tone: 'critical' }; default: return { label: 'Unavailable', tone: 'neutral' }; } }
+function formatMetric(value: number, unit: string) { const integerUnits = new Set(['incidents', 'messages', 'events/minute', 'count/hour', 'messages/15 minutes']); const displayed = value === 0 ? '0' : integerUnits.has(unit) ? Math.round(value).toString() : Math.abs(value) >= 100 ? value.toFixed(0) : value.toFixed(value < 10 ? 2 : 1); const suffix: Record<string, string> = { 'requests/second': ' req/s', milliseconds: ' ms', percent: '%', 'events/minute': ' events/min', messages: ' messages', incidents: '', 'count/hour': '/h', 'messages/15 minutes': ' messages/15 min' }; return `${displayed}${suffix[unit] ?? ` ${unit}`}`; }
 
 function Overview() { return <section role="tabpanel" aria-label="Overview" className="observability-overview"><div className="summary-strip primary-metrics"><Metric label="Request rate" value="6.4 rps" detail="8% above prior hour" /><Metric label="P95 latency" value="149 ms" detail="Objective below 250 ms" tone="success" /><Metric label="Kafka throughput" value="63/min" detail="Consumer lag: 3" /><Metric label="Open alerts" value="1" detail="No critical alerts" tone="warning" /></div><div className="observability-main-row"><Panel title="API traffic and latency" eyebrow="Last 60 minutes"><ChartLegend items={[{ label: 'Requests', color: CHART_COLORS.primary, detail: 'per minute' }, { label: 'P50', color: CHART_COLORS.healthy, detail: 'ms' }, { label: 'P95', color: CHART_COLORS.warning, detail: 'ms' }]} /><div className="chart-wrap observability-chart" role="img" aria-label="API request volume and latency"><ResponsiveContainer width="100%" height="100%"><AreaChart data={requestData} margin={{ left: -2, right: 18, top: 8, bottom: 2 }}><CartesianGrid stroke="#E5E9EA" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="time" tick={{ fill: '#6D767E', fontSize: 12 }} /><YAxis yAxisId="left" tick={{ fill: '#6D767E', fontSize: 12 }} /><YAxis yAxisId="right" orientation="right" tick={{ fill: '#6D767E', fontSize: 12 }} unit="ms" /><Tooltip content={<ChartTooltip units={{ requests: ' req/min', p50: ' ms', p95: ' ms' }} />} /><Area yAxisId="left" dataKey="requests" name="Requests" stroke={CHART_COLORS.primary} fill={CHART_COLORS.primary} fillOpacity={0.1} strokeWidth={2} /><Line yAxisId="right" dataKey="p50" name="P50" stroke={CHART_COLORS.healthy} strokeWidth={2} dot={false} /><Line yAxisId="right" dataKey="p95" name="P95" stroke={CHART_COLORS.warning} strokeWidth={2} dot={false} /></AreaChart></ResponsiveContainer></div></Panel><Panel title="Active alerts" eyebrow="Prometheus rules" className="active-alerts"><div className="alert-summary"><GovernanceIndicator decision="pending" /><strong>Trace ingestion delayed</strong><p>Jaeger span delay remains above five seconds.</p><dl><div><dt>Severity</dt><dd>Warning</dd></div><div><dt>Firing</dt><dd>8 minutes</dd></div><div><dt>Owner</dt><dd>Platform operations</dd></div></dl></div><div className="healthy-rule"><GovernanceIndicator decision="allowed" /><span><strong>3 rules healthy</strong><small>Error budget, consumer lag, fallback rate</small></span></div></Panel></div><div className="observability-bottom-row"><Panel title="Kafka processing and DLQ" eyebrow="Events per minute"><div className="chart-wrap supporting-chart" role="img" aria-label="Kafka processed and dead-letter queue events"><ResponsiveContainer width="100%" height="100%"><BarChart data={processing} margin={{ left: -5, right: 10, top: 8 }}><CartesianGrid stroke="#E5E9EA" strokeDasharray="3 5" vertical={false} /><XAxis dataKey="time" tick={{ fill: '#6D767E', fontSize: 12 }} /><YAxis tick={{ fill: '#6D767E', fontSize: 12 }} /><Tooltip content={<ChartTooltip units={{ processed: ' events', dlq: ' events' }} />} /><Bar dataKey="processed" name="Processed" fill={CHART_COLORS.informational} radius={[3, 3, 0, 0]} /><Bar dataKey="dlq" name="DLQ" fill={CHART_COLORS.critical} radius={[3, 3, 0, 0]} /></BarChart></ResponsiveContainer></div></Panel><Panel title="Recent correlated traces" eyebrow="Workflow spans"><TraceList compact /></Panel></div></section>; }
 

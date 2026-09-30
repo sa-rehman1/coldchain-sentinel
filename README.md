@@ -200,13 +200,27 @@ The supported zero-cost path starts the API, worker, frontend, PostgreSQL, Kafka
 .\scripts\demo.ps1 -Action Start -Observability
 ```
 
+The `demo` Compose profile also runs the one-shot `showcase-seed` service before the frontend is
+marked ready. It upserts seven stable, fictional shipments and four coherent incidents into a
+narrowly scoped showcase namespace. The dashboard read model selects only that namespace, so
+integration-test and ad-hoc demo records cannot pollute the Command Center. Re-running the launcher
+or the command below refreshes timestamps without duplicating telemetry, incidents, approvals, or
+commands, and it never removes unrelated rows or Docker volumes:
+
+```powershell
+docker compose --env-file .env --profile demo run --rm showcase-seed
+```
+
 If another PostgreSQL instance owns host port 5432, change only the host binding:
 
 ```powershell
 .\scripts\demo.ps1 -Action Start -Observability -PostgresHostPort 15432
 ```
 
-Open `http://127.0.0.1:4173`, select **Dispatcher**, open **Demo Lab**, and run **Sustained temperature breach**. Follow the created incident through evidence, recommendation, governance, approval, command, simulated action, and audit history.
+Open `http://127.0.0.1:4173`. The Command Center uses the reconciled backend showcase read model;
+select **Dispatcher** to continue into governed incident review. Demo Lab remains available for
+creating a separate, uniquely identified workflow run through evidence, recommendation, governance,
+approval, command, simulated action, and audit history.
 
 Stop services without deleting containers, volumes, or data:
 
@@ -229,7 +243,7 @@ The launcher does not print the key. External output remains advisory and is sub
 Current development-validation results:
 
 - **109** non-live backend tests passed with **87.09%** branch coverage.
-- **115** tests passed in the containerized PostgreSQL/Qdrant suite, with 3 explicitly gated tests skipped.
+- **129** tests passed in the PostgreSQL/Qdrant suite, with 3 explicitly gated tests skipped.
 - **50** frontend component and accessibility tests passed.
 - **16/16** deterministic evaluation scenarios passed.
 - Ruff, strict mypy, ESLint, strict TypeScript, prompt/schema drift, Alembic drift, packaging, Compose, environment, and credential checks passed.

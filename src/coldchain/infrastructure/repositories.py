@@ -2,14 +2,25 @@
 
 import hashlib
 import json
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from coldchain.application.dashboard import (
+    DashboardIncidentFact,
+    aggregate_incident_activity,
+    summarize_incidents,
+)
+from coldchain.application.demo_projection import (
+    DemoShipmentProjection,
+    demo_evidence_reference,
+    demo_incident_reference,
+)
 from coldchain.application.interfaces import Identity, ProcessingResult, WorkflowRepository
+from coldchain.application.showcase import SHOWCASE_BY_SHIPMENT_ID
 from coldchain.application.workflow import AuthorizationError, WorkflowConflictError
 from coldchain.contracts.models import TelemetryEvent
 from coldchain.domain import (
@@ -38,6 +49,95 @@ from coldchain.infrastructure.models import (
     RecommendationRecord,
     TelemetryRecord,
 )
+from coldchain.retrieval.corpus import resolve_trusted_citations
+
+
+def _audit_event_hash(
+    *,
+    audit_event_id: UUID,
+    incident_id: UUID,
+    event_type: str,
+    actor_id: str,
+    correlation_id: UUID,
+    causation_id: UUID | None,
+    payload: dict[str, Any],
+    occurred_at: datetime,
+    previous_event_hash: str | None,
+) -> str:
+    canonical = json.dumps(
+        {
+            "auditEventId": str(audit_event_id),
+            "incidentId": str(incident_id),
+            "eventType": event_type,
+            "actorId": actor_id,
+            "correlationId": str(correlation_id),
+            "causationId": str(causation_id) if causation_id else None,
+            "payload": payload,
+            "occurredAt": occurred_at.isoformat(),
+            "previousEventHash": previous_event_hash,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+async def append_audit_event(
+    session: AsyncSession,
+    *,
+    incident_id: UUID,
+    event_type: str,
+    actor_id: str,
+    correlation_id: UUID,
+    causation_id: UUID | None,
+    payload: dict[str, Any],
+    component_version: str,
+    audit_event_id: UUID | None = None,
+    occurred_at: datetime | None = None,
+) -> bool:
+    """Append one hash-linked event, optionally with a stable id for idempotent seeding."""
+
+    event_id = audit_event_id or uuid4()
+    if audit_event_id is not None and await session.scalar(
+        select(AuditEventRecord.sequence).where(AuditEventRecord.audit_event_id == event_id)
+    ):
+        return False
+    previous_hash = await session.scalar(
+        select(AuditEventRecord.event_hash)
+        .where(AuditEventRecord.incident_id == incident_id)
+        .order_by(AuditEventRecord.sequence.desc())
+        .limit(1)
+    )
+    event_time = occurred_at or utc_now()
+    event_hash = _audit_event_hash(
+        audit_event_id=event_id,
+        incident_id=incident_id,
+        event_type=event_type,
+        actor_id=actor_id,
+        correlation_id=correlation_id,
+        causation_id=causation_id,
+        payload=payload,
+        occurred_at=event_time,
+        previous_event_hash=previous_hash,
+    )
+    session.add(
+        AuditEventRecord(
+            audit_event_id=event_id,
+            incident_id=incident_id,
+            event_type=event_type,
+            actor_id=actor_id,
+            correlation_id=correlation_id,
+            causation_id=causation_id,
+            component_version=component_version,
+            schema_version="1.0",
+            payload=payload,
+            occurred_at=event_time,
+            previous_event_hash=previous_hash,
+            event_hash=event_hash,
+        )
+    )
+    await session.flush()
+    return True
 
 
 class SqlWorkflowRepository(WorkflowRepository):
@@ -227,6 +327,228 @@ class SqlWorkflowRepository(WorkflowRepository):
             ).all()
             return [await self._incident_view(session, row) for row in rows]
 
+    async def list_showcase_incidents(self) -> list[dict[str, object]]:
+        """Return only canonical incident rows in stable showcase order."""
+
+        shipment_ids = tuple(SHOWCASE_BY_SHIPMENT_ID)
+        async with self._database.transaction() as session:
+            rows = (
+                await session.scalars(
+                    select(IncidentRecord).where(IncidentRecord.shipment_id.in_(shipment_ids))
+                )
+            ).all()
+            by_shipment = {row.shipment_id: row for row in rows}
+            return [
+                await self._incident_view(session, by_shipment[shipment_id])
+                for shipment_id in shipment_ids
+                if shipment_id in by_shipment
+                and SHOWCASE_BY_SHIPMENT_ID[shipment_id].incident_reference is not None
+            ]
+
+    async def dashboard(self) -> dict[str, object]:
+        """Return a reconciled read-only projection scoped to canonical showcase rows."""
+
+        now = datetime.now(UTC)
+        shipment_ids = tuple(SHOWCASE_BY_SHIPMENT_ID)
+        async with self._database.transaction() as session:
+            incidents = tuple(
+                (
+                    await session.scalars(
+                        select(IncidentRecord)
+                        .where(IncidentRecord.shipment_id.in_(shipment_ids))
+                        .order_by(IncidentRecord.created_at.desc())
+                    )
+                ).all()
+            )
+            incident_ids = tuple(row.incident_id for row in incidents)
+            telemetry = tuple(
+                (
+                    await session.scalars(
+                        select(TelemetryRecord)
+                        .where(TelemetryRecord.shipment_id.in_(shipment_ids))
+                        .order_by(TelemetryRecord.occurred_at)
+                    )
+                ).all()
+            )
+            recommendations = (
+                tuple(
+                    (
+                        await session.scalars(
+                            select(RecommendationRecord).where(
+                                RecommendationRecord.incident_id.in_(incident_ids)
+                            )
+                        )
+                    ).all()
+                )
+                if incident_ids
+                else ()
+            )
+            recommendation_ids = tuple(row.recommendation_id for row in recommendations)
+            governances = (
+                tuple(
+                    (
+                        await session.scalars(
+                            select(GovernanceRecord).where(
+                                GovernanceRecord.recommendation_id.in_(recommendation_ids)
+                            )
+                        )
+                    ).all()
+                )
+                if recommendation_ids
+                else ()
+            )
+            approvals = (
+                tuple(
+                    (
+                        await session.scalars(
+                            select(ApprovalRecord).where(
+                                ApprovalRecord.incident_id.in_(incident_ids)
+                            )
+                        )
+                    ).all()
+                )
+                if incident_ids
+                else ()
+            )
+
+        approvals_by_incident = {row.incident_id: row for row in approvals}
+        recommendation_by_incident = {row.incident_id: row for row in recommendations}
+        governance_by_recommendation = {row.recommendation_id: row for row in governances}
+        facts = tuple(
+            DashboardIncidentFact(
+                shipment_id=row.shipment_id,
+                state=row.state,
+                severity=row.severity,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+                has_human_decision=row.incident_id in approvals_by_incident,
+            )
+            for row in incidents
+        )
+        summary = summarize_incidents(facts)
+        telemetry_by_shipment: dict[UUID, list[TelemetryRecord]] = {}
+        for row in telemetry:
+            telemetry_by_shipment.setdefault(row.shipment_id, []).append(row)
+
+        latest_shipments: list[dict[str, object]] = []
+        seen_shipments: set[UUID] = set()
+        for incident in incidents:
+            if incident.shipment_id in seen_shipments:
+                continue
+            seen_shipments.add(incident.shipment_id)
+            shipment = SHOWCASE_BY_SHIPMENT_ID[incident.shipment_id]
+            readings = telemetry_by_shipment.get(incident.shipment_id, [])
+            if not readings:
+                continue
+            latest = readings[-1]
+            recommendation = recommendation_by_incident.get(incident.incident_id)
+            governance = (
+                governance_by_recommendation.get(recommendation.recommendation_id)
+                if recommendation is not None
+                else None
+            )
+            latest_shipments.append(
+                {
+                    "incidentId": str(incident.incident_id),
+                    "incidentReference": shipment.incident_reference,
+                    "shipmentId": str(incident.shipment_id),
+                    "shipmentReference": shipment.reference,
+                    "route": {
+                        "origin": shipment.route_from,
+                        "via": shipment.route_via,
+                        "destination": shipment.route_to,
+                        "progress": shipment.route_progress,
+                    },
+                    "product": shipment.product_label,
+                    "currentTemperatureCelsius": latest.temperature_celsius,
+                    "permittedMinCelsius": shipment.permitted_min,
+                    "permittedMaxCelsius": shipment.permitted_max,
+                    "state": incident.state,
+                    "severity": incident.severity,
+                    "createdAt": incident.created_at.astimezone(UTC).isoformat(),
+                    "updatedAt": incident.updated_at.astimezone(UTC).isoformat(),
+                    "lastReadingAt": latest.occurred_at.astimezone(UTC).isoformat(),
+                    "ageMinutes": max(
+                        0, int((now - incident.created_at.astimezone(UTC)).total_seconds() // 60)
+                    ),
+                    "trendCelsius": [item.temperature_celsius for item in readings[-6:]],
+                    "reasonCodes": latest.reason_codes,
+                    "recommendedAction": (
+                        recommendation.action_type if recommendation is not None else None
+                    ),
+                    "governanceDecision": governance.decision if governance is not None else None,
+                    "recommendationExpiresAt": (
+                        recommendation.expires_at.astimezone(UTC).isoformat()
+                        if recommendation is not None
+                        else None
+                    ),
+                }
+            )
+            if len(latest_shipments) == 5:
+                break
+
+        pending = tuple(
+            fact
+            for fact in facts
+            if fact.state == "AWAITING_APPROVAL" and not fact.has_human_decision
+        )
+        expiring_soon = 0
+        for incident in incidents:
+            recommendation = recommendation_by_incident.get(incident.incident_id)
+            if (
+                recommendation is not None
+                and incident.state == "AWAITING_APPROVAL"
+                and incident.incident_id not in approvals_by_incident
+                and now
+                < recommendation.expires_at
+                <= now.replace(microsecond=0) + timedelta(minutes=15)
+            ):
+                expiring_soon += 1
+
+        return {
+            "generatedAt": now.isoformat(),
+            "scope": "canonical-showcase",
+            "metrics": {
+                "affectedShipments": summary.affected_shipments,
+                "openIncidents": summary.open_incidents,
+                "awaitingHumanReview": summary.awaiting_human_review,
+            },
+            "severityDistribution": {
+                "critical": summary.critical_incidents,
+                "warning": summary.warning_incidents,
+                "normal": summary.normal_incidents,
+            },
+            "latestShipments": latest_shipments,
+            "approvalQueue": {
+                "pending": len(pending),
+                "oldestWaitingMinutes": max(
+                    (
+                        int((now - fact.created_at.astimezone(UTC)).total_seconds() // 60)
+                        for fact in pending
+                    ),
+                    default=0,
+                ),
+                "expiringWithin15Minutes": expiring_soon,
+            },
+            "humanDecisions": [
+                {
+                    "incidentId": str(approval.incident_id),
+                    "incidentReference": SHOWCASE_BY_SHIPMENT_ID[
+                        next(
+                            incident.shipment_id
+                            for incident in incidents
+                            if incident.incident_id == approval.incident_id
+                        )
+                    ].incident_reference,
+                    "decision": approval.decision,
+                    "reviewerRole": self._reviewer_label(approval.actor_role),
+                    "decidedAt": approval.decided_at.astimezone(UTC).isoformat(),
+                }
+                for approval in sorted(approvals, key=lambda item: item.decided_at, reverse=True)
+            ],
+            "activity": aggregate_incident_activity(facts, now),
+        }
+
     async def get_incident(self, incident_id: UUID) -> dict[str, object] | None:
         async with self._database.transaction() as session:
             row = await session.get(IncidentRecord, incident_id)
@@ -265,23 +587,45 @@ class SqlWorkflowRepository(WorkflowRepository):
                     .order_by(AuditEventRecord.sequence)
                 )
             ).all()
-            return [
-                {
-                    "sequence": row.sequence,
-                    "auditEventId": str(row.audit_event_id),
-                    "eventType": row.event_type,
-                    "actorId": row.actor_id,
-                    "correlationId": str(row.correlation_id),
-                    "causationId": str(row.causation_id) if row.causation_id else None,
-                    "componentVersion": row.component_version,
-                    "schemaVersion": row.schema_version,
-                    "payload": row.payload,
-                    "occurredAt": row.occurred_at.isoformat(),
-                    "previousEventHash": row.previous_event_hash,
-                    "eventHash": row.event_hash,
-                }
-                for row in rows
-            ]
+            result: list[dict[str, object]] = []
+            expected_previous_hash: str | None = None
+            chain_valid = True
+            for row in rows:
+                expected_hash = _audit_event_hash(
+                    audit_event_id=row.audit_event_id,
+                    incident_id=row.incident_id,
+                    event_type=row.event_type,
+                    actor_id=row.actor_id,
+                    correlation_id=row.correlation_id,
+                    causation_id=row.causation_id,
+                    payload=row.payload,
+                    occurred_at=row.occurred_at,
+                    previous_event_hash=row.previous_event_hash,
+                )
+                chain_valid = bool(
+                    chain_valid
+                    and row.previous_event_hash == expected_previous_hash
+                    and row.event_hash == expected_hash
+                )
+                result.append(
+                    {
+                        "sequence": row.sequence,
+                        "auditEventId": str(row.audit_event_id),
+                        "eventType": row.event_type,
+                        "actorId": row.actor_id,
+                        "correlationId": str(row.correlation_id),
+                        "causationId": str(row.causation_id) if row.causation_id else None,
+                        "componentVersion": row.component_version,
+                        "schemaVersion": row.schema_version,
+                        "payload": row.payload,
+                        "occurredAt": row.occurred_at.isoformat(),
+                        "previousEventHash": row.previous_event_hash,
+                        "eventHash": row.event_hash,
+                        "hashChainVerified": chain_valid,
+                    }
+                )
+                expected_previous_hash = row.event_hash
+            return result
 
     async def decide(
         self,
@@ -508,51 +852,20 @@ class SqlWorkflowRepository(WorkflowRepository):
         causation_id: UUID | None,
         payload: dict[str, Any],
     ) -> None:
-        previous_hash = await session.scalar(
-            select(AuditEventRecord.event_hash)
-            .where(AuditEventRecord.incident_id == incident_id)
-            .order_by(AuditEventRecord.sequence.desc())
-            .limit(1)
+        await append_audit_event(
+            session,
+            incident_id=incident_id,
+            event_type=event_type,
+            actor_id=actor_id,
+            correlation_id=correlation_id,
+            causation_id=causation_id,
+            payload=payload,
+            component_version=self.component_version,
         )
-        occurred_at = utc_now()
-        audit_event_id = uuid4()
-        canonical = json.dumps(
-            {
-                "auditEventId": str(audit_event_id),
-                "incidentId": str(incident_id),
-                "eventType": event_type,
-                "actorId": actor_id,
-                "correlationId": str(correlation_id),
-                "causationId": str(causation_id) if causation_id else None,
-                "payload": payload,
-                "occurredAt": occurred_at.isoformat(),
-                "previousEventHash": previous_hash,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        event_hash = hashlib.sha256(canonical.encode()).hexdigest()
-        session.add(
-            AuditEventRecord(
-                audit_event_id=audit_event_id,
-                incident_id=incident_id,
-                event_type=event_type,
-                actor_id=actor_id,
-                correlation_id=correlation_id,
-                causation_id=causation_id,
-                component_version=self.component_version,
-                schema_version="1.0",
-                payload=payload,
-                occurred_at=occurred_at,
-                previous_event_hash=previous_hash,
-                event_hash=event_hash,
-            )
-        )
-        await session.flush()
 
     @staticmethod
     def _incident_dict(row: IncidentRecord) -> dict[str, object]:
-        return {
+        result: dict[str, object] = {
             "incidentId": str(row.incident_id),
             "shipmentId": str(row.shipment_id),
             "state": row.state,
@@ -563,6 +876,24 @@ class SqlWorkflowRepository(WorkflowRepository):
             "createdAt": row.created_at.astimezone(UTC).isoformat(),
             "updatedAt": row.updated_at.astimezone(UTC).isoformat(),
         }
+        shipment = SHOWCASE_BY_SHIPMENT_ID.get(row.shipment_id)
+        if shipment is not None:
+            result.update(
+                {
+                    "incidentReference": shipment.incident_reference,
+                    "shipmentReference": shipment.reference,
+                    "route": {
+                        "origin": shipment.route_from,
+                        "via": shipment.route_via,
+                        "destination": shipment.route_to,
+                        "progress": shipment.route_progress,
+                    },
+                    "productLabel": shipment.product_label,
+                    "sensorLabel": shipment.sensor_label,
+                    "reviewerLabel": "Unassigned",
+                }
+            )
+        return result
 
     async def _incident_view(self, session: AsyncSession, row: IncidentRecord) -> dict[str, object]:
         result = self._incident_dict(row)
@@ -583,6 +914,31 @@ class SqlWorkflowRepository(WorkflowRepository):
                     .limit(20)
                 )
             ).all()[::-1]
+        demo_projection = next(
+            (
+                projection
+                for item in reversed(telemetry)
+                if (projection := DemoShipmentProjection.from_policy_inputs(item.policy_inputs))
+                is not None
+            ),
+            None,
+        )
+        if demo_projection is not None:
+            result.update(
+                {
+                    "incidentReference": demo_incident_reference(row.incident_id),
+                    "shipmentReference": demo_projection.shipment_reference,
+                    "route": {
+                        "origin": demo_projection.route_origin,
+                        "via": demo_projection.route_via,
+                        "destination": demo_projection.route_destination,
+                        "progress": demo_projection.route_progress,
+                    },
+                    "productLabel": demo_projection.product_label,
+                    "sensorLabel": demo_projection.sensor_label,
+                    "reviewerLabel": "Unassigned",
+                }
+            )
         result["telemetry"] = [
             {
                 "eventId": str(item.event_id),
@@ -602,22 +958,143 @@ class SqlWorkflowRepository(WorkflowRepository):
         if evidence is not None:
             result["evidence"] = {
                 "evidenceId": str(evidence.evidence_id),
+                "evidenceReference": (
+                    demo_evidence_reference(evidence.evidence_id)
+                    if demo_projection is not None
+                    else None
+                ),
                 "telemetryEventIds": evidence.telemetry_event_ids,
                 "policyInputs": evidence.policy_inputs,
                 "summary": evidence.summary,
                 "contentHash": evidence.content_hash,
                 "capturedAt": evidence.captured_at.astimezone(UTC).isoformat(),
             }
+        shipment = SHOWCASE_BY_SHIPMENT_ID.get(row.shipment_id)
+        profile = shipment.evidence_profile if shipment is not None else demo_projection
+        evidence_complete = False
+        if profile is not None:
+            if shipment is not None:
+                sensor_label = shipment.sensor_label
+                route_from = shipment.route_from
+                route_via = shipment.route_via
+                route_to = shipment.route_to
+            elif demo_projection is not None:
+                sensor_label = demo_projection.sensor_label
+                route_from = demo_projection.route_origin
+                route_via = demo_projection.route_via
+                route_to = demo_projection.route_destination
+            else:  # pragma: no cover - profile requires one projection source
+                raise AssertionError("evidence profile source is missing")
+            evidence_complete = bool(
+                telemetry
+                and evidence is not None
+                and sensor_label
+                and route_from
+                and route_via
+                and route_to
+                and profile.sensor_health
+                and profile.calibration
+                and profile.sample_interval_minutes > 0
+                and profile.reading_quality
+                and profile.product_sensitivity
+                and profile.custody_verification == "Complete"
+            )
+            result["evidenceProfile"] = {
+                "sensorHealth": profile.sensor_health,
+                "calibration": profile.calibration,
+                "sampleIntervalMinutes": profile.sample_interval_minutes,
+                "readingQuality": profile.reading_quality,
+                "productSensitivity": profile.product_sensitivity,
+                "custodyVerification": profile.custody_verification,
+                "complete": evidence_complete,
+            }
         recommendation = await session.scalar(
             select(RecommendationRecord).where(RecommendationRecord.incident_id == row.incident_id)
         )
         if recommendation is not None:
+            approval = await session.scalar(
+                select(ApprovalRecord).where(
+                    ApprovalRecord.recommendation_id == recommendation.recommendation_id
+                )
+            )
+            current_time = utc_now()
+            if approval is not None:
+                actionability = {
+                    "state": "DECIDED",
+                    "approvalAllowed": False,
+                    "rejectionAllowed": False,
+                    "status": "Decision recorded",
+                    "explanation": (
+                        "A final human decision has already been recorded for this recommendation."
+                    ),
+                    "expiresInMinutes": None,
+                }
+            elif recommendation.expires_at <= current_time:
+                actionability = {
+                    "state": "EXPIRED",
+                    "approvalAllowed": False,
+                    "rejectionAllowed": False,
+                    "status": "Expired — approval blocked",
+                    "explanation": (
+                        "The historical governance evaluation remains unchanged, but a new human "
+                        "decision cannot be recorded after recommendation expiry."
+                    ),
+                    "expiresInMinutes": 0,
+                }
+            else:
+                actionability = {
+                    "state": "AWAITING_HUMAN_REVIEW",
+                    "approvalAllowed": True,
+                    "rejectionAllowed": True,
+                    "status": "Awaiting human review",
+                    "explanation": (
+                        "The recommendation is current and an authorized dispatcher may approve "
+                        "or reject it."
+                    ),
+                    "expiresInMinutes": max(
+                        0,
+                        int((recommendation.expires_at - current_time).total_seconds() // 60),
+                    ),
+                }
+            provenance = recommendation.provenance
+            cited_chunk_ids = tuple(
+                str(item)
+                for item in (
+                    provenance.get("citedChunkIds") or provenance.get("cited_chunk_ids") or []
+                )
+            )
+            applicability_value = provenance.get("citationApplicability") or {}
+            applicability = (
+                {str(key): str(value) for key, value in applicability_value.items()}
+                if isinstance(applicability_value, dict)
+                else {}
+            )
+            citations = resolve_trusted_citations(
+                cited_chunk_ids,
+                as_of=row.created_at.astimezone(UTC).date(),
+                applicability=applicability,
+            )
             result.update(
                 {
                     "recommendationId": str(recommendation.recommendation_id),
                     "recommendedAction": recommendation.action_type,
                     "recommendationExpiresAt": recommendation.expires_at.isoformat(),
                     "recommendationProvenance": recommendation.provenance,
+                    "sopEvidence": [
+                        {
+                            "chunkId": citation.chunk_id,
+                            "documentId": citation.document_id,
+                            "documentTitle": citation.document_title,
+                            "documentVersion": citation.document_version,
+                            "sectionId": citation.section_id,
+                            "sectionTitle": citation.section_title,
+                            "effectiveDate": citation.effective_date.isoformat(),
+                            "excerpt": citation.excerpt,
+                            "whyApplicable": citation.why_applicable,
+                            "validationStatus": citation.validation_status,
+                        }
+                        for citation in citations
+                    ],
                     "recommendation": {
                         "recommendationId": str(recommendation.recommendation_id),
                         "evidenceIds": recommendation.evidence_ids,
@@ -629,6 +1106,7 @@ class SqlWorkflowRepository(WorkflowRepository):
                         "expiresAt": recommendation.expires_at.astimezone(UTC).isoformat(),
                         "nonAuthoritative": recommendation.non_authoritative,
                         "provenance": recommendation.provenance,
+                        "actionability": actionability,
                     },
                 }
             )
@@ -638,21 +1116,94 @@ class SqlWorkflowRepository(WorkflowRepository):
                 )
             )
             if governance is not None:
+                citation_ids = {citation.chunk_id for citation in citations}
+                citations_recognized = bool(cited_chunk_ids) and citation_ids == set(
+                    cited_chunk_ids
+                )
+                governance_inputs = governance.inputs
+                checks = [
+                    {
+                        "name": "Schema check",
+                        "state": "pass"
+                        if governance_inputs.get("recommendationSchemaValid") is True
+                        else "failure",
+                        "detail": "Recommendation schema is valid."
+                        if governance_inputs.get("recommendationSchemaValid") is True
+                        else "Recommendation schema validity was not established.",
+                    },
+                    {
+                        "name": "Evidence check",
+                        "state": "pass" if evidence_complete else "failure",
+                        "detail": "The immutable evidence snapshot is complete."
+                        if evidence_complete
+                        else "The evidence snapshot is incomplete.",
+                    },
+                    {
+                        "name": "Citation check",
+                        "state": "pass" if citations_recognized else "failure",
+                        "detail": (
+                            f"{len(citations)} cited SOP chunks are recognized, "
+                            "effective, and trusted."
+                        )
+                        if citations_recognized
+                        else (
+                            "One or more SOP citations are missing, unknown, "
+                            "superseded, or not yet effective."
+                        ),
+                    },
+                    {
+                        "name": "Policy check",
+                        "state": "pass"
+                        if governance_inputs.get("actionAllowed") is True
+                        else "failure",
+                        "detail": "The proposed action is allowed by deterministic policy."
+                        if governance_inputs.get("actionAllowed") is True
+                        else "The proposed action is not allowed by deterministic policy.",
+                    },
+                    {
+                        "name": "Expiry check",
+                        "state": "pass"
+                        if governance_inputs.get("recommendationExpired") is False
+                        else "failure",
+                        "detail": "The recommendation was current when governance evaluated it."
+                        if governance_inputs.get("recommendationExpired") is False
+                        else "The recommendation was expired or expiry was not established.",
+                    },
+                    {
+                        "name": "Kill-switch state",
+                        "state": "pass"
+                        if governance_inputs.get("killSwitchActive") is False
+                        else "failure",
+                        "detail": "The kill switch is inactive."
+                        if governance_inputs.get("killSwitchActive") is False
+                        else "The kill switch is active or its state is unknown.",
+                    },
+                    {
+                        "name": "Human approval",
+                        "state": "warning"
+                        if governance_inputs.get("humanApprovalRequired") is True
+                        else "pass",
+                        "detail": (
+                            "Authenticated dispatcher approval is required before any command."
+                        )
+                        if governance_inputs.get("humanApprovalRequired") is True
+                        else "No human approval boundary was reported.",
+                    },
+                ]
                 result["governance"] = {
                     "evaluationId": str(governance.evaluation_id),
                     "recommendationId": str(governance.recommendation_id),
                     "decision": governance.decision,
                     "policyVersion": governance.policy_version,
                     "reasonCodes": governance.reason_codes,
-                    "inputs": governance.inputs,
+                    "inputs": governance_inputs,
                     "evaluatedAt": governance.evaluated_at.astimezone(UTC).isoformat(),
+                    "authority": "deterministic-governance",
+                    "checks": checks,
                 }
-            approval = await session.scalar(
-                select(ApprovalRecord).where(
-                    ApprovalRecord.recommendation_id == recommendation.recommendation_id
-                )
-            )
             if approval is not None:
+                if row.shipment_id in SHOWCASE_BY_SHIPMENT_ID:
+                    result["reviewerLabel"] = self._reviewer_label(approval.actor_role)
                 result["approval"] = {
                     "approvalId": str(approval.approval_id),
                     "recommendationId": str(approval.recommendation_id),
@@ -693,6 +1244,17 @@ class SqlWorkflowRepository(WorkflowRepository):
                         ),
                     }
         return result
+
+    @staticmethod
+    def _reviewer_label(actor_role: str) -> str:
+        normalized = actor_role.strip().lower()
+        labels = {
+            "dispatcher": "Dispatcher",
+            "supervisor": "Supervisor",
+            "auditor": "Auditor",
+            "operator": "Operator",
+        }
+        return labels.get(normalized, "Authorized reviewer")
 
     @staticmethod
     def _command(row: CommandRecord) -> Command:

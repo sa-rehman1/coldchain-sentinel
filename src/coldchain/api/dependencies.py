@@ -7,7 +7,8 @@ from fastapi import Request
 from coldchain.api.errors import ServiceUnavailableError
 from coldchain.application.demo import DemoScenarioService
 from coldchain.application.health import AiHealthService, ReadinessService
-from coldchain.application.interfaces import TelemetryPublisher, WorkflowRepository
+from coldchain.application.interfaces import IncidentReader, TelemetryPublisher, WorkflowRepository
+from coldchain.application.observability import ObservabilitySummaryService
 from coldchain.application.workflow import ApprovalService
 
 
@@ -19,11 +20,22 @@ def get_ai_health_service(request: Request) -> AiHealthService:
     return cast(AiHealthService, request.app.state.ai_health_service)
 
 
+def get_observability_service(request: Request) -> ObservabilitySummaryService:
+    return cast(ObservabilitySummaryService, request.app.state.observability_service)
+
+
 def get_repository(request: Request) -> WorkflowRepository:
     repository = getattr(request.app.state, "workflow_repository", None)
     if repository is None:
         raise ServiceUnavailableError("workflow repository is unavailable")
     return cast(WorkflowRepository, repository)
+
+
+def get_incident_reader(request: Request) -> IncidentReader:
+    repository = getattr(request.app.state, "workflow_repository", None)
+    if repository is None:
+        raise ServiceUnavailableError("workflow repository is unavailable")
+    return cast(IncidentReader, repository)
 
 
 def get_approval_service(request: Request) -> ApprovalService:

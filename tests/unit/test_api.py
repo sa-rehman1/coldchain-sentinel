@@ -6,6 +6,7 @@ import httpx
 
 from coldchain.api.app import create_app
 from coldchain.application.actions import SimulatedColdChainActionAdapter
+from coldchain.application.demo import DemoScenarioService
 from coldchain.application.health import ReadinessService
 from coldchain.application.interfaces import Identity, ProcessingResult
 from coldchain.application.workflow import WorkflowConflictError
@@ -121,6 +122,7 @@ class ApiRepository:
         self.incident_id = uuid4()
         self.recommendation_id = uuid4()
         self.command_id = uuid4()
+        self.demo_incident: dict[str, object] | None = None
         self.decisions: dict[str, tuple[tuple[object, ...], UUID]] = {}
 
     async def demo_run_status(
@@ -129,7 +131,7 @@ class ApiRepository:
         return {
             "processedEventCount": len(event_ids),
             "dispositions": ["ACCEPTED" for _ in event_ids],
-            "incident": None,
+            "incident": self.demo_incident,
         }
 
     async def recent_readings(
@@ -168,6 +170,88 @@ class ApiRepository:
     async def list_incidents(self) -> list[dict[str, object]]:
         return [self._incident()]
 
+    async def list_showcase_incidents(self) -> list[dict[str, object]]:
+        incidents: list[dict[str, object]] = []
+        for index in range(1, 5):
+            incident = self._incident()
+            incident.update(
+                {
+                    "incidentReference": f"INC-100{index}",
+                    "shipmentReference": f"CCS-100{index}",
+                    "productLabel": f"Showcase product {index}",
+                    "sensorLabel": f"Probe {index:02d}",
+                    "reviewerLabel": "Unassigned",
+                    "evidenceProfile": {
+                        "sensorHealth": "Healthy",
+                        "calibration": "Verified",
+                        "sampleIntervalMinutes": 10,
+                        "readingQuality": "No quality flags",
+                        "productSensitivity": "High",
+                        "custodyVerification": "Complete",
+                        "complete": True,
+                    },
+                }
+            )
+            incidents.append(incident)
+        return incidents
+
+    async def dashboard(self) -> dict[str, object]:
+        now = datetime.now(UTC).isoformat()
+        return {
+            "generatedAt": now,
+            "scope": "canonical-showcase",
+            "metrics": {
+                "affectedShipments": 1,
+                "openIncidents": 1,
+                "awaitingHumanReview": 1,
+            },
+            "severityDistribution": {"critical": 1, "warning": 0, "normal": 0},
+            "latestShipments": [
+                {
+                    "incidentId": str(self.incident_id),
+                    "incidentReference": "INC-1001",
+                    "shipmentId": str(uuid4()),
+                    "shipmentReference": "CCS-1001",
+                    "route": {
+                        "origin": "Austin",
+                        "via": "Waco",
+                        "destination": "Dallas",
+                        "progress": 68,
+                    },
+                    "product": "mRNA vaccines",
+                    "currentTemperatureCelsius": 12.4,
+                    "permittedMinCelsius": 2.0,
+                    "permittedMaxCelsius": 8.0,
+                    "state": "AWAITING_APPROVAL",
+                    "severity": "CRITICAL",
+                    "createdAt": now,
+                    "updatedAt": now,
+                    "lastReadingAt": now,
+                    "ageMinutes": 0,
+                    "trendCelsius": [4.2, 12.4],
+                    "reasonCodes": ["CLEARLY_UNSAFE_TEMPERATURE"],
+                    "recommendedAction": "HOLD_SHIPMENT",
+                    "governanceDecision": "APPROVAL_REQUIRED",
+                    "recommendationExpiresAt": now,
+                }
+            ],
+            "approvalQueue": {
+                "pending": 1,
+                "oldestWaitingMinutes": 0,
+                "expiringWithin15Minutes": 1,
+            },
+            "humanDecisions": [],
+            "activity": [
+                {
+                    "label": "12:00",
+                    "startsAt": now,
+                    "critical": 1,
+                    "warning": 0,
+                    "resolved": 0,
+                }
+            ],
+        }
+
     async def get_incident(self, incident_id: UUID) -> dict[str, object] | None:
         return self._incident() if incident_id == self.incident_id else None
 
@@ -186,6 +270,7 @@ class ApiRepository:
                 "occurredAt": datetime.now(UTC).isoformat(),
                 "previousEventHash": None,
                 "eventHash": "a" * 64,
+                "hashChainVerified": True,
             }
         ]
 
@@ -274,6 +359,8 @@ async def test_incident_api_vertical_slice_and_authorization() -> None:
     ) as client:
         submitted = await client.post("/api/v1/telemetry", json=demo_event())
         listed = await client.get("/api/v1/incidents")
+        showcase = await client.get("/api/v1/incidents?scope=canonical-showcase")
+        dashboard = await client.get("/api/v1/dashboard")
         incident = await client.get(f"/api/v1/incidents/{repository.incident_id}")
         timeline = await client.get(f"/api/v1/incidents/{repository.incident_id}/timeline")
         unauthorized = await client.post(
@@ -313,6 +400,26 @@ async def test_incident_api_vertical_slice_and_authorization() -> None:
     assert submitted.status_code == 202
     assert publisher.event is not None
     assert listed.status_code == incident.status_code == timeline.status_code == 200
+    assert len(listed.json()) == 1
+    assert showcase.status_code == 200
+    assert [item["incidentReference"] for item in showcase.json()] == [
+        "INC-1001",
+        "INC-1002",
+        "INC-1003",
+        "INC-1004",
+    ]
+    assert [item["shipmentReference"] for item in showcase.json()] == [
+        "CCS-1001",
+        "CCS-1002",
+        "CCS-1003",
+        "CCS-1004",
+    ]
+    assert all(item["evidenceProfile"]["complete"] for item in showcase.json())
+    assert listed.json()[0]["evidenceProfile"] is None
+    assert dashboard.status_code == 200
+    assert dashboard.json()["metrics"]["affectedShipments"] == 1
+    assert dashboard.json()["latestShipments"][0]["shipmentReference"] == "CCS-1001"
+    assert dashboard.json()["humanDecisions"] == []
     assert unauthorized.status_code == 403
     assert approved.status_code == 200
     assert approved.json()["status"] == "SUCCEEDED"
@@ -393,7 +500,143 @@ async def test_demo_api_lists_scenarios_and_publishes_only_telemetry() -> None:
     assert len(set(duplicate.json()["eventIds"])) == 1
     assert run.status_code == 200
     assert run.json()["status"] == "COMPLETED_WITHOUT_INCIDENT"
+    assert run.json()["resultState"] == "COMPLETE"
+    assert run.json()["steps"]["humanReview"] == "NOT_REQUIRED"
     assert all(event.producer.startswith("coldchain-local-demo:") for event in publisher.events)
+
+
+async def test_demo_run_uses_public_reference_and_waits_for_a_real_human_decision() -> None:
+    repository = ApiRepository()
+    publisher = FakePublisher()
+    now = datetime.now(UTC).isoformat()
+    evidence_id = uuid4()
+    evaluation_id = uuid4()
+    repository.demo_incident = {
+        **repository._incident(),
+        "evidence": {
+            "evidenceId": str(evidence_id),
+            "telemetryEventIds": [str(uuid4())],
+            "policyInputs": {},
+            "summary": "Synthetic evidence",
+            "contentHash": "safe-demo-hash",
+            "capturedAt": now,
+        },
+        "recommendation": {
+            "recommendationId": str(repository.recommendation_id),
+            "evidenceIds": [str(evidence_id)],
+            "actionType": "HOLD_SHIPMENT",
+            "parameters": {},
+            "provider": "deterministic",
+            "authorIdentity": "service:recommendation-engine",
+            "rationale": "Bounded synthetic recommendation",
+            "expiresAt": now,
+            "nonAuthoritative": True,
+            "provenance": {},
+            "actionability": {
+                "state": "AWAITING_HUMAN_REVIEW",
+                "approvalAllowed": True,
+                "rejectionAllowed": True,
+                "status": "Awaiting human review",
+                "explanation": (
+                    "The recommendation is current and an authorized dispatcher may approve "
+                    "or reject it."
+                ),
+                "expiresInMinutes": 10,
+            },
+        },
+        "governance": {
+            "evaluationId": str(evaluation_id),
+            "recommendationId": str(repository.recommendation_id),
+            "decision": "APPROVAL_REQUIRED",
+            "policyVersion": "governance-policy-v1",
+            "reasonCodes": ["HUMAN_APPROVAL_REQUIRED"],
+            "inputs": {"humanApprovalRequired": True},
+            "evaluatedAt": now,
+        },
+    }
+    app = create_app(
+        Settings(environment="test", database_url=None, demo_mode_enabled=True),
+        repository,
+        publisher,
+    )
+    headers = {"X-Actor-ID": "dispatcher:demo", "X-Actor-Roles": "dispatcher"}
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as client:
+        started = await client.post("/api/v1/demo/scenarios/sustained", headers=headers)
+        response = await client.get(f"/api/v1/demo/runs/{started.json()['runId']}", headers=headers)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["incidentId"] == str(repository.incident_id)
+    assert payload["incidentReference"].startswith("INC-DEMO-")
+    assert str(repository.incident_id) not in payload["incidentReference"]
+    assert payload["governanceDecision"] == "APPROVAL_REQUIRED"
+    assert payload["humanDecisionRecorded"] is False
+    assert payload["resultState"] == "AWAITING_HUMAN_REVIEW"
+    assert payload["steps"] == {
+        "sensorReading": "COMPLETED",
+        "policyCheck": "COMPLETED",
+        "incidentCreated": "COMPLETED",
+        "evidenceCollected": "COMPLETED",
+        "aiAdvisory": "COMPLETED",
+        "governance": "COMPLETED",
+        "humanReview": "PENDING",
+    }
+    assert payload["incident"]["approval"] is None
+    assert payload["incident"]["command"] is None
+
+
+def test_demo_result_states_require_real_decisions_and_preserve_blocked_outcomes() -> None:
+    incident: dict[str, Any] = {"incidentId": str(uuid4())}
+
+    assert (
+        DemoScenarioService._result_state(
+            complete=True,
+            incident=incident,
+            governance_decision="APPROVAL_REQUIRED",
+            human_decision_recorded=True,
+        )
+        == "COMPLETE"
+    )
+    assert (
+        DemoScenarioService._stage_states(
+            processed=1,
+            complete=True,
+            incident=incident,
+            governance_decision="APPROVAL_REQUIRED",
+            human_decision_recorded=True,
+        )["humanReview"]
+        == "COMPLETED"
+    )
+    assert (
+        DemoScenarioService._result_state(
+            complete=True,
+            incident=incident,
+            governance_decision="PROHIBITED",
+            human_decision_recorded=False,
+        )
+        == "BLOCKED"
+    )
+    assert (
+        DemoScenarioService._stage_states(
+            processed=1,
+            complete=True,
+            incident=incident,
+            governance_decision="PROHIBITED",
+            human_decision_recorded=False,
+        )["humanReview"]
+        == "NOT_REQUIRED"
+    )
+    assert (
+        DemoScenarioService._result_state(
+            complete=False,
+            incident=incident,
+            governance_decision=None,
+            human_decision_recorded=False,
+        )
+        == "PROCESSING"
+    )
 
 
 async def test_demo_api_is_disabled_and_role_enforced() -> None:
